@@ -1,3 +1,115 @@
-# Sidequests Kotlin Prototype
+# Sidequests — Kotlin Native Prototype (team draft)
 
-This repository is being used to review a native Android draft with the Kotlin subgroup before the team decides what to keep and merge.
+This repository contains a **native Android draft** of the Sidequests experience represented in the current Figma Make / React prototype. It is intentionally isolated from the final course repository so the Kotlin subgroup can review, test, change, and divide the work before deciding what should be carried over.
+
+## Current validation status
+
+✅ GitHub Actions successfully runs `:app:assembleDebug` on the draft branch.
+
+✅ A debug APK is generated as the `sidequests-debug-apk` workflow artifact.
+
+✅ The 12 required user-visible MS7 states are represented in the native flow.
+
+⚠️ This validates that the Android project compiles and packages successfully. It does **not** by itself prove pixel-perfect visual parity on every physical device. The UI was reviewed against the current design source, and the final visual pass should still be done on the subgroup's target phones/emulators.
+
+See [`docs/VALIDATION.md`](docs/VALIDATION.md) for the validation checklist.
+
+## What is implemented in this draft
+
+- Native Android application written in Kotlin with Jetpack Compose.
+- Sidequests visual system translated from the current mockup:
+  - Explorer Indigo `#5B4BDB`
+  - Quest Amber `#FFB347`
+  - Discovery Teal `#2AB7A9`
+  - Light background `#F6F5FF`
+  - Dark background `#0E0D1A`
+- Four onboarding states.
+- Explorer feed with available-time, location, and category filters.
+- Local smart recommendation scoring and skip behavior.
+- Simulated contextual recommendation banner.
+- Quest detail view.
+- Active quest view with four-step progress.
+- Native camera preview launcher for photo-proof steps.
+- Save-and-exit flow.
+- Rating/feedback flow.
+- Group quest view.
+- Editable profile/preferences view.
+- Light/dark mode.
+- MVVM-style UI state + repository separation.
+- Observable `StateFlow` state used by Compose, providing a concrete Observer-style reactive flow for the architecture discussion.
+
+## 12-view MS7 mapping
+
+1. Onboarding — interests
+2. Onboarding — difficulty
+3. Onboarding — typical time
+4. Onboarding — budget & social vibe
+5. Explorer
+6. Quest detail
+7. Active quest
+8. Exit flow
+9. Rating
+10. Group quest
+11. Profile
+12. Contextual recommendation state/banner
+
+See [`docs/MS7_VIEW_MAP.md`](docs/MS7_VIEW_MAP.md) for the detailed mapping and rationale.
+
+## Architecture
+
+The draft intentionally uses a small architecture that can grow into Sprint 2:
+
+`Compose UI -> AppViewModel -> SidequestsRepository -> in-memory seed data`
+
+The UI observes `StateFlow<SidequestsUiState>`. Actions update state through the ViewModel and Compose reacts to the new state. This is the concrete Observer-style flow used in the draft.
+
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+## Important scope boundary
+
+This is a **native prototype / Sprint 2 foundation**, not a claim that all Sprint 2 integrations are finished. The following are still simulated or local:
+
+- contextual trigger: simulated after entering Explorer;
+- recommendation engine: local scoring, not analytics/backend-driven;
+- user identity: local demo profile, no real authentication provider;
+- data: in-memory seed data, no persistence/backend;
+- location: UI filter only, no real GPS query;
+- external service: not connected;
+- analytics pipeline and Business Questions: not connected;
+- dedicated sensor feature: not connected yet.
+
+These follow-up items are listed in [`docs/SPRINT2_NEXT.md`](docs/SPRINT2_NEXT.md).
+
+## Toolchain
+
+The validated CI build currently uses:
+
+- Android Gradle Plugin 9.1.1
+- Kotlin / Compose compiler 2.4.20
+- Compose BOM 2026.06.00
+- `compileSdk = 36`
+- `targetSdk = 36`
+- `minSdk = 26`
+- Java 17
+- Gradle 9.3.1 in CI
+
+## Open in Android Studio
+
+1. Clone or download the `draft/native-prototype` branch.
+2. Open the repository root in a recent Android Studio version.
+3. Let Gradle sync.
+4. Run the `app` configuration on an Android emulator or device with API 26+.
+5. Walk through onboarding and the remaining screens using the controls in the app.
+
+The repository intentionally does not commit a Gradle wrapper JAR; CI provisions Gradle 9.3.1 explicitly. Android Studio can use the configured Gradle environment when opening the project.
+
+## Suggested team review
+
+Before moving anything into the final course repository, the subgroup should decide:
+
+1. Which visual details should match Figma exactly and which should follow Android conventions.
+2. Whether to keep the compact MVVM + Repository structure.
+3. Who owns each view and each Sprint 2 functionality.
+4. Which backend/auth/location/analytics stack the full team will use.
+5. How the Kotlin repository will integrate with the separate backend and analytics repositories.
+6. Which follow-up items from `docs/SPRINT2_NEXT.md` are approved for implementation.
