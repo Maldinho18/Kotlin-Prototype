@@ -8,10 +8,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import java.time.Instant
-import java.util.UUID
 
 interface QuestProgressRepository {
-    suspend fun acceptQuest(questId: String): Result<String>
+    suspend fun acceptQuest(questId: String, attemptId: String): Result<Unit>
 
     suspend fun updateProgress(
         attemptId: String,
@@ -59,10 +58,12 @@ class SupabaseQuestProgressRepository(
     private val client: SupabaseClient,
 ) : QuestProgressRepository {
 
-    override suspend fun acceptQuest(questId: String): Result<String> = runCatching {
+    override suspend fun acceptQuest(
+        questId: String,
+        attemptId: String,
+    ): Result<Unit> = runCatching {
         withContext(Dispatchers.IO) {
             val userId = requireUserId()
-            val attemptId = UUID.randomUUID().toString()
 
             client.from("user_quests").insert(
                 UserQuestInsertDto(
@@ -71,8 +72,6 @@ class SupabaseQuestProgressRepository(
                     questId = questId,
                 )
             )
-
-            attemptId
         }
     }
 
