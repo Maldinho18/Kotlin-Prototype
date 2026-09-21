@@ -474,6 +474,7 @@ fun GroupQuestScreen(
 fun ProfileScreen(
     state: SidequestsUiState,
     viewModel: AppViewModel,
+    onSignOut: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val completed = state.progressByQuest.values.count { it.completedSteps.size >= 4 }
@@ -575,6 +576,13 @@ fun ProfileScreen(
                     }
                 }
             }
+        }
+        item {
+            PrimaryButton(
+                text = "Sign out",
+                onClick = onSignOut,
+                containerColor = MaterialTheme.colorScheme.error,
+            )
         }
     }
 }
