@@ -1,8 +1,11 @@
 package com.sidequests.app.ui
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.sidequests.app.data.InMemorySidequestsRepository
 import com.sidequests.app.data.SidequestsRepository
+import com.sidequests.app.data.SupabaseSidequestsRepository
+import com.sidequests.app.data.remote.SupabaseProvider
 import com.sidequests.app.model.AppScreen
 import com.sidequests.app.model.Quest
 import com.sidequests.app.model.QuestDifficulty
@@ -15,9 +18,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 class AppViewModel(
-    private val repository: SidequestsRepository = InMemorySidequestsRepository(),
+    private val repository: SidequestsRepository =
+        if (SupabaseProvider.isConfigured) {
+            SupabaseSidequestsRepository(SupabaseProvider.client)
+        } else {
+            InMemorySidequestsRepository()
+        },
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SidequestsUiState())
@@ -45,6 +54,40 @@ class AppViewModel(
             completedIds = completedIds,
             inProgressIds = inProgressIds,
         )
+    }
+
+
+    fun refreshQuestCatalog() {
+        if (_uiState.value.catalogLoading) return
+
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    catalogLoading = true,
+                    catalogError = null,
+                )
+            }
+
+            repository.refresh()
+                .onSuccess { count ->
+                    _uiState.update {
+                        it.copy(
+                            catalogLoading = false,
+                            catalogSource = "Supabase · $count quests",
+                            catalogError = null,
+                        )
+                    }
+                }
+                .onFailure { throwable ->
+                    _uiState.update {
+                        it.copy(
+                            catalogLoading = false,
+                            catalogSource = "Local fallback",
+                            catalogError = throwable.message ?: "Remote catalogue unavailable.",
+                        )
+                    }
+                }
+        }
     }
 
     fun navigate(screen: AppScreen) {
