@@ -6,6 +6,8 @@ import com.sidequests.app.data.InMemorySidequestsRepository
 import com.sidequests.app.data.SidequestsRepository
 import com.sidequests.app.data.SupabaseSidequestsRepository
 import com.sidequests.app.data.remote.SupabaseProvider
+import com.sidequests.app.data.progress.QuestProgressRepository
+import com.sidequests.app.data.progress.SupabaseQuestProgressRepository
 import com.sidequests.app.model.AppScreen
 import com.sidequests.app.model.Quest
 import com.sidequests.app.model.QuestDifficulty
@@ -19,6 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 class AppViewModel(
     private val repository: SidequestsRepository =
@@ -26,6 +29,12 @@ class AppViewModel(
             SupabaseSidequestsRepository(SupabaseProvider.client)
         } else {
             InMemorySidequestsRepository()
+        },
+    private val progressRepository: QuestProgressRepository? =
+        if (SupabaseProvider.isConfigured) {
+            SupabaseQuestProgressRepository(SupabaseProvider.client)
+        } else {
+            null
         },
 ) : ViewModel() {
 
@@ -100,14 +109,31 @@ class AppViewModel(
 
     fun acceptQuest(questId: String) {
         val quest = repository.questById(questId)
+        val existingAttemptId = _uiState.value.attemptIdByQuest[questId]
+        val attemptId = existingAttemptId ?: UUID.randomUUID().toString()
+
         _uiState.update { state ->
-            val progressMap = if (questId in state.progressByQuest) state.progressByQuest
-            else state.progressByQuest + (questId to QuestProgress())
+            val progressMap = if (questId in state.progressByQuest) {
+                state.progressByQuest
+            } else {
+                state.progressByQuest + (questId to QuestProgress())
+            }
+
             state.copy(
                 activeQuestId = questId,
                 progressByQuest = progressMap,
+                attemptIdByQuest = state.attemptIdByQuest + (questId to attemptId),
                 screen = if (quest.isGroup) AppScreen.GroupQuest else AppScreen.ActiveQuest,
+                progressSyncError = null,
+                progressSyncMessage = null,
             )
+        }
+
+        if (existingAttemptId == null) {
+            syncProgress("Saving accepted quest…") {
+                progressRepository?.acceptQuest(questId, attemptId)
+                    ?: Result.success(Unit)
+            }
         }
     }
 
@@ -175,15 +201,36 @@ class AppViewModel(
     fun completeCurrentStep() {
         val state = _uiState.value
         val questId = state.activeQuestId
+        val quest = repository.questById(questId)
         val current = state.progressByQuest[questId] ?: QuestProgress()
         val nextCompleted = current.completedSteps + current.currentStep
-        val nextStep = if (current.currentStep < 3) current.currentStep + 1 else current.currentStep
+        val completed = nextCompleted.size >= quest.steps.size
+        val nextStep = if (current.currentStep < quest.steps.lastIndex) {
+            current.currentStep + 1
+        } else {
+            current.currentStep
+        }
+
         _uiState.update {
             it.copy(
                 progressByQuest = it.progressByQuest + (
-                    questId to current.copy(currentStep = nextStep, completedSteps = nextCompleted)
-                )
+                    questId to current.copy(
+                        currentStep = nextStep,
+                        completedSteps = nextCompleted,
+                    )
+                ),
+                progressSyncError = null,
             )
+        }
+
+        val attemptId = _uiState.value.attemptIdByQuest[questId] ?: return
+        syncProgress(if (completed) "Saving completed quest…" else "Saving progress…") {
+            progressRepository?.updateProgress(
+                attemptId = attemptId,
+                currentStep = nextStep,
+                completedSteps = nextCompleted,
+                completed = completed,
+            ) ?: Result.success(Unit)
         }
     }
 
@@ -209,11 +256,25 @@ class AppViewModel(
         val state = _uiState.value
         val questId = state.activeQuestId
         val current = state.progressByQuest[questId] ?: QuestProgress()
+
         _uiState.update {
             it.copy(
-                progressByQuest = it.progressByQuest + (questId to current.copy(abandonReason = reason)),
+                progressByQuest = it.progressByQuest + (
+                    questId to current.copy(abandonReason = reason)
+                ),
                 screen = AppScreen.Explorer,
+                progressSyncError = null,
             )
+        }
+
+        val attemptId = state.attemptIdByQuest[questId] ?: return
+        syncProgress("Saving quest progress…") {
+            progressRepository?.saveProgress(
+                attemptId = attemptId,
+                currentStep = current.currentStep,
+                completedSteps = current.completedSteps,
+                reason = reason,
+            ) ?: Result.success(Unit)
         }
     }
 
@@ -221,21 +282,84 @@ class AppViewModel(
         val state = _uiState.value
         val questId = state.activeQuestId
         val current = state.progressByQuest[questId] ?: QuestProgress()
+
         _uiState.update {
             it.copy(
-                progressByQuest = it.progressByQuest + (questId to current.copy(abandoned = true)),
+                progressByQuest = it.progressByQuest + (
+                    questId to current.copy(abandoned = true)
+                ),
                 screen = AppScreen.Explorer,
+                progressSyncError = null,
             )
+        }
+
+        val attemptId = state.attemptIdByQuest[questId] ?: return
+        syncProgress("Saving abandonment…") {
+            progressRepository?.abandonQuest(
+                attemptId = attemptId,
+                currentStep = current.currentStep,
+                completedSteps = current.completedSteps,
+                reason = current.abandonReason,
+            ) ?: Result.success(Unit)
         }
     }
 
     fun submitRating(stars: Int, tags: Set<String>) {
         val state = _uiState.value
+        val questId = state.activeQuestId
+
         _uiState.update {
             it.copy(
-                ratingsByQuest = it.ratingsByQuest + (state.activeQuestId to QuestRating(stars, tags)),
+                ratingsByQuest = it.ratingsByQuest + (
+                    questId to QuestRating(stars, tags)
+                ),
                 screen = AppScreen.Explorer,
+                progressSyncError = null,
             )
+        }
+
+        val attemptId = state.attemptIdByQuest[questId] ?: return
+        syncProgress("Saving rating…") {
+            progressRepository?.rateQuest(
+                attemptId = attemptId,
+                stars = stars,
+                tags = tags,
+            ) ?: Result.success(Unit)
+        }
+    }
+
+    private fun syncProgress(
+        message: String,
+        operation: suspend () -> Result<Unit>,
+    ) {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    progressSyncing = true,
+                    progressSyncError = null,
+                    progressSyncMessage = message,
+                )
+            }
+
+            operation()
+                .onSuccess {
+                    _uiState.update {
+                        it.copy(
+                            progressSyncing = false,
+                            progressSyncError = null,
+                            progressSyncMessage = "Progress synced with Supabase",
+                        )
+                    }
+                }
+                .onFailure { throwable ->
+                    _uiState.update {
+                        it.copy(
+                            progressSyncing = false,
+                            progressSyncError = throwable.message ?: "Progress could not be synced.",
+                            progressSyncMessage = "Saved locally; remote sync failed",
+                        )
+                    }
+                }
         }
     }
 
