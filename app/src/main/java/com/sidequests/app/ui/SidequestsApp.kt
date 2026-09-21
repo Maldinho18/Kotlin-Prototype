@@ -75,6 +75,10 @@ private fun AuthenticatedSidequestsContent(
     viewModel: AppViewModel,
     onSignOut: () -> Unit,
 ) {
+    LaunchedEffect(Unit) {
+        viewModel.refreshQuestCatalog()
+    }
+
     LaunchedEffect(state.screen, state.contextualNotificationShown) {
         if (state.screen == AppScreen.Explorer && !state.contextualNotificationShown) {
             delay(4_000)
