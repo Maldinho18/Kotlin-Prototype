@@ -87,6 +87,10 @@ data class SidequestsUiState(
     val progressByQuest: Map<String, QuestProgress> = emptyMap(),
     val skippedQuestIds: Set<String> = emptySet(),
     val ratingsByQuest: Map<String, QuestRating> = emptyMap(),
+    val attemptIdByQuest: Map<String, String> = emptyMap(),
+    val progressSyncing: Boolean = false,
+    val progressSyncError: String? = null,
+    val progressSyncMessage: String? = null,
     val notificationQuestId: String? = null,
     val contextualNotificationShown: Boolean = false,
 )
