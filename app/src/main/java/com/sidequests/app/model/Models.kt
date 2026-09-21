@@ -74,6 +74,9 @@ enum class AppScreen {
 
 data class SidequestsUiState(
     val screen: AppScreen = AppScreen.Onboarding,
+    val catalogLoading: Boolean = false,
+    val catalogSource: String = "Local fallback",
+    val catalogError: String? = null,
     val onboardingStep: Int = 0,
     val darkMode: Boolean = false,
     val selectedQuestId: String = "botanical-garden",
