@@ -286,6 +286,17 @@ fun ExplorerScreen(
                     Spacer(Modifier.height(4.dp))
                     Text("Matched to your time, budget and vibe", color = Color.White, style = MaterialTheme.typography.titleLarge)
                     Text("Prototype recommendation logic updates immediately when you change filters.", color = Color.White.copy(alpha = .72f), fontSize = 12.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = when {
+                            state.catalogLoading -> "Syncing quest catalogue…"
+                            state.catalogError != null -> "Offline fallback · ${state.catalogError}"
+                            else -> state.catalogSource
+                        },
+                        color = Color.White.copy(alpha = .78f),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
                 }
             }
         }
