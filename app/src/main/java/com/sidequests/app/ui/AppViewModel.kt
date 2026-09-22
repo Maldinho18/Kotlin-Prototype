@@ -140,6 +140,7 @@ class AppViewModel(
             remote.recommend(
                 availableMinutes = state.availableTime,
                 preferences = state.preferences,
+                excludedQuestIds = state.skippedQuestIds,
                 limit = 3,
             )
                 .onSuccess { results ->
@@ -219,8 +220,14 @@ class AppViewModel(
 
     fun skipQuest(questId: String) {
         val quest = repository.questById(questId)
-        _uiState.update { it.copy(skippedQuestIds = it.skippedQuestIds + questId) }
+        _uiState.update {
+            it.copy(
+                skippedQuestIds = it.skippedQuestIds + questId,
+                remoteRecommendationIds = it.remoteRecommendationIds.filterNot { id -> id == questId },
+            )
+        }
         trackEvent("recommendation_skipped", quest)
+        refreshRecommendations()
     }
 
     fun toggleDarkMode() {
