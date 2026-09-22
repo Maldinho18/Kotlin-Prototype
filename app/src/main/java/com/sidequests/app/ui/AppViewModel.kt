@@ -10,6 +10,8 @@ import com.sidequests.app.data.progress.QuestProgressRepository
 import com.sidequests.app.data.progress.SupabaseQuestProgressRepository
 import com.sidequests.app.data.analytics.AnalyticsRepository
 import com.sidequests.app.data.analytics.SupabaseAnalyticsRepository
+import com.sidequests.app.data.recommendation.RecommendationRepository
+import com.sidequests.app.data.recommendation.SupabaseRecommendationRepository
 import com.sidequests.app.model.AppScreen
 import com.sidequests.app.model.Quest
 import com.sidequests.app.model.QuestDifficulty
@@ -46,6 +48,12 @@ class AppViewModel(
         } else {
             null
         },
+    private val recommendationRepository: RecommendationRepository? =
+        if (SupabaseProvider.isConfigured) {
+            SupabaseRecommendationRepository(SupabaseProvider.client)
+        } else {
+            null
+        },
 ) : ViewModel() {
 
     private val analyticsSessionId = UUID.randomUUID().toString()
@@ -66,6 +74,13 @@ class AppViewModel(
 
     fun recommendations(): List<Quest> {
         val state = _uiState.value
+
+        if (state.remoteRecommendationIds.isNotEmpty()) {
+            return state.remoteRecommendationIds.mapNotNull { id ->
+                repository.allQuests().firstOrNull { it.id == id }
+            }
+        }
+
         val completedIds = state.progressByQuest.filterValues { it.completedSteps.size >= 4 }.keys
         val inProgressIds = state.progressByQuest.filterValues { it.completedSteps.size in 1..3 && !it.abandoned }.keys
         return repository.recommendations(
@@ -98,6 +113,7 @@ class AppViewModel(
                             catalogError = null,
                         )
                     }
+                    refreshRecommendations()
                 }
                 .onFailure { throwable ->
                     _uiState.update {
@@ -111,6 +127,57 @@ class AppViewModel(
         }
     }
 
+    fun refreshRecommendations() {
+        val remote = recommendationRepository ?: return
+        val state = _uiState.value
+        if (state.recommendationLoading) return
+
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(recommendationLoading = true, recommendationError = null)
+            }
+
+            remote.recommend(
+                availableMinutes = state.availableTime,
+                preferences = state.preferences,
+                limit = 3,
+            )
+                .onSuccess { results ->
+                    val ids = results.map { it.questId }
+                    _uiState.update {
+                        it.copy(
+                            recommendationLoading = false,
+                            remoteRecommendationIds = ids,
+                            recommendationSource = "Supabase BQ5 · " + ids.size + " quests",
+                            recommendationError = null,
+                        )
+                    }
+
+                    ids.forEachIndexed { index, id ->
+                        repository.allQuests().firstOrNull { it.id == id }?.let { quest ->
+                            trackEvent(
+                                eventType = "recommendation_shown",
+                                quest = quest,
+                                metadata = buildJsonObject {
+                                    put("rank", index + 1)
+                                    put("source", "bq5_rpc")
+                                },
+                            )
+                        }
+                    }
+                }
+                .onFailure { throwable ->
+                    _uiState.update {
+                        it.copy(
+                            recommendationLoading = false,
+                            remoteRecommendationIds = emptyList(),
+                            recommendationSource = "Local fallback",
+                            recommendationError = throwable.message ?: "Shared recommendation unavailable.",
+                        )
+                    }
+                }
+        }
+    }
     fun navigate(screen: AppScreen) {
         _uiState.update { it.copy(screen = screen) }
     }
@@ -161,7 +228,8 @@ class AppViewModel(
     }
 
     fun setAvailableTime(minutes: Int) {
-        _uiState.update { it.copy(availableTime = minutes) }
+        _uiState.update { it.copy(availableTime = minutes, remoteRecommendationIds = emptyList()) }
+        refreshRecommendations()
     }
 
     fun setCategory(category: String) {
@@ -184,8 +252,12 @@ class AppViewModel(
             val next = state.preferences.interests.toMutableSet().apply {
                 if (!add(interest)) remove(interest)
             }
-            state.copy(preferences = state.preferences.copy(interests = next))
+            state.copy(
+                preferences = state.preferences.copy(interests = next),
+                remoteRecommendationIds = emptyList(),
+            )
         }
+        refreshRecommendations()
     }
 
     fun setDifficulty(difficulty: QuestDifficulty) {
@@ -206,11 +278,22 @@ class AppViewModel(
     }
 
     fun setSocialLevel(level: SocialLevel) {
-        _uiState.update { it.copy(preferences = it.preferences.copy(socialLevel = level)) }
+        _uiState.update {
+            it.copy(
+                preferences = it.preferences.copy(socialLevel = level),
+                remoteRecommendationIds = emptyList(),
+            )
+        }
+        refreshRecommendations()
     }
 
     fun setLocationMode(mode: String) {
-        _uiState.update { it.copy(preferences = it.preferences.copy(locationMode = mode)) }
+        _uiState.update {
+            it.copy(
+                preferences = it.preferences.copy(locationMode = mode),
+                remoteRecommendationIds = emptyList(),
+            )
+        }
         trackEvent(
             eventType = "location_mode_selected",
             metadata = buildJsonObject { put("mode", mode) },
