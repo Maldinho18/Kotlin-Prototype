@@ -297,6 +297,17 @@ fun ExplorerScreen(
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
                     )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = when {
+                            state.recommendationLoading -> "Refreshing shared BQ5 recommendations…"
+                            state.recommendationError != null -> "Recommendation fallback · ${state.recommendationError}"
+                            else -> state.recommendationSource
+                        },
+                        color = Color.White.copy(alpha = .78f),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
                 }
             }
         }
