@@ -16,6 +16,7 @@ interface RecommendationRepository {
     suspend fun recommend(
         availableMinutes: Int,
         preferences: UserPreferences,
+        excludedQuestIds: Set<String> = emptySet(),
         limit: Int = 3,
     ): Result<List<RecommendationResult>>
 }
@@ -39,6 +40,7 @@ class SupabaseRecommendationRepository(
     override suspend fun recommend(
         availableMinutes: Int,
         preferences: UserPreferences,
+        excludedQuestIds: Set<String>,
         limit: Int,
     ): Result<List<RecommendationResult>> = runCatching {
         withContext(Dispatchers.IO) {
@@ -53,6 +55,10 @@ class SupabaseRecommendationRepository(
                             JsonArray(preferences.interests.sorted().map(::JsonPrimitive)),
                         )
                         put("p_location_mode", preferences.locationMode)
+                        put(
+                            "p_excluded_quest_ids",
+                            JsonArray(excludedQuestIds.sorted().map(::JsonPrimitive)),
+                        )
                         put("p_limit", limit)
                     },
                 )
