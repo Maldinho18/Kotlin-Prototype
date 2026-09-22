@@ -8,6 +8,8 @@ import com.sidequests.app.data.SupabaseSidequestsRepository
 import com.sidequests.app.data.remote.SupabaseProvider
 import com.sidequests.app.data.progress.QuestProgressRepository
 import com.sidequests.app.data.progress.SupabaseQuestProgressRepository
+import com.sidequests.app.data.analytics.AnalyticsRepository
+import com.sidequests.app.data.analytics.SupabaseAnalyticsRepository
 import com.sidequests.app.model.AppScreen
 import com.sidequests.app.model.Quest
 import com.sidequests.app.model.QuestDifficulty
@@ -22,6 +24,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.UUID
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 class AppViewModel(
     private val repository: SidequestsRepository =
@@ -36,7 +40,15 @@ class AppViewModel(
         } else {
             null
         },
+    private val analyticsRepository: AnalyticsRepository? =
+        if (SupabaseProvider.isConfigured) {
+            SupabaseAnalyticsRepository(SupabaseProvider.client)
+        } else {
+            null
+        },
 ) : ViewModel() {
+
+    private val analyticsSessionId = UUID.randomUUID().toString()
 
     private val _uiState = MutableStateFlow(SidequestsUiState())
     val uiState: StateFlow<SidequestsUiState> = _uiState.asStateFlow()
@@ -134,11 +146,14 @@ class AppViewModel(
                 progressRepository?.acceptQuest(questId, attemptId)
                     ?: Result.success(Unit)
             }
+            trackEvent("quest_accepted", quest)
         }
     }
 
     fun skipQuest(questId: String) {
+        val quest = repository.questById(questId)
         _uiState.update { it.copy(skippedQuestIds = it.skippedQuestIds + questId) }
+        trackEvent("recommendation_skipped", quest)
     }
 
     fun toggleDarkMode() {
@@ -196,6 +211,10 @@ class AppViewModel(
 
     fun setLocationMode(mode: String) {
         _uiState.update { it.copy(preferences = it.preferences.copy(locationMode = mode)) }
+        trackEvent(
+            eventType = "location_mode_selected",
+            metadata = buildJsonObject { put("mode", mode) },
+        )
     }
 
     fun completeCurrentStep() {
@@ -221,6 +240,13 @@ class AppViewModel(
                 ),
                 progressSyncError = null,
             )
+        }
+
+        if (current.completedSteps.isEmpty() && nextCompleted.isNotEmpty()) {
+            trackEvent("quest_started", quest)
+        }
+        if (completed) {
+            trackEvent("quest_completed", quest)
         }
 
         val attemptId = _uiState.value.attemptIdByQuest[questId] ?: return
@@ -267,6 +293,14 @@ class AppViewModel(
             )
         }
 
+        trackEvent(
+            eventType = "quest_progress_saved",
+            quest = repository.questById(questId),
+            metadata = buildJsonObject {
+                if (reason != null) put("pause_reason", reason)
+            },
+        )
+
         val attemptId = state.attemptIdByQuest[questId] ?: return
         syncProgress("Saving quest progress…") {
             progressRepository?.saveProgress(
@@ -278,20 +312,32 @@ class AppViewModel(
         }
     }
 
-    fun startAnotherQuest() {
+    fun startAnotherQuest(reason: String?) {
         val state = _uiState.value
         val questId = state.activeQuestId
+        val quest = repository.questById(questId)
         val current = state.progressByQuest[questId] ?: QuestProgress()
 
         _uiState.update {
             it.copy(
                 progressByQuest = it.progressByQuest + (
-                    questId to current.copy(abandoned = true)
+                    questId to current.copy(
+                        abandoned = true,
+                        abandonReason = reason,
+                    )
                 ),
                 screen = AppScreen.Explorer,
                 progressSyncError = null,
             )
         }
+
+        trackEvent(
+            eventType = "quest_abandoned",
+            quest = quest,
+            metadata = buildJsonObject {
+                if (reason != null) put("reason", reason)
+            },
+        )
 
         val attemptId = state.attemptIdByQuest[questId] ?: return
         syncProgress("Saving abandonment…") {
@@ -299,7 +345,7 @@ class AppViewModel(
                 attemptId = attemptId,
                 currentStep = current.currentStep,
                 completedSteps = current.completedSteps,
-                reason = current.abandonReason,
+                reason = reason,
             ) ?: Result.success(Unit)
         }
     }
@@ -325,6 +371,26 @@ class AppViewModel(
                 stars = stars,
                 tags = tags,
             ) ?: Result.success(Unit)
+        }
+    }
+
+    private fun trackEvent(
+        eventType: String,
+        quest: Quest? = null,
+        metadata: kotlinx.serialization.json.JsonObject = kotlinx.serialization.json.JsonObject(emptyMap()),
+    ) {
+        val analytics = analyticsRepository ?: return
+        val state = _uiState.value
+
+        viewModelScope.launch {
+            analytics.track(
+                sessionId = analyticsSessionId,
+                eventType = eventType,
+                availableMinutes = state.availableTime,
+                preferences = state.preferences,
+                quest = quest,
+                metadata = metadata,
+            )
         }
     }
 
