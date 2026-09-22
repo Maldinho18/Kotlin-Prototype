@@ -336,7 +336,7 @@ fun ExitFlowScreen(
         Spacer(Modifier.height(8.dp))
         Text(
             "Start another quest instead",
-            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable(onClick = viewModel::startAnotherQuest).padding(12.dp),
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable { viewModel.startAnotherQuest(selectedReason) }.padding(12.dp),
             textAlign = TextAlign.Center,
             color = ExplorerIndigo,
             fontWeight = FontWeight.Bold,
