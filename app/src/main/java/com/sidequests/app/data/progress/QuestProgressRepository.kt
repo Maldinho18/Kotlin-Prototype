@@ -7,7 +7,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import java.time.Instant
 
 interface QuestProgressRepository {
     suspend fun acceptQuest(questId: String, attemptId: String): Result<Unit>
@@ -86,11 +85,6 @@ class SupabaseQuestProgressRepository(
                 set("status", if (completed) "completed" else "in_progress")
                 set("current_step", currentStep)
                 set("completed_steps", completedSteps.sorted())
-                if (completed) {
-                    set("completed_at", Instant.now().toString())
-                } else {
-                    set("started_at", Instant.now().toString())
-                }
             }) {
                 filter {
                     eq("id", attemptId)
@@ -110,7 +104,6 @@ class SupabaseQuestProgressRepository(
                 set("status", "in_progress")
                 set("current_step", currentStep)
                 set("completed_steps", completedSteps.sorted())
-                set("abandon_reason", reason)
             }) {
                 filter {
                     eq("id", attemptId)
@@ -131,7 +124,6 @@ class SupabaseQuestProgressRepository(
                 set("current_step", currentStep)
                 set("completed_steps", completedSteps.sorted())
                 set("abandon_reason", reason)
-                set("abandoned_at", Instant.now().toString())
             }) {
                 filter {
                     eq("id", attemptId)
