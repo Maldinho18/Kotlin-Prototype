@@ -44,6 +44,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sidequests.app.model.AppScreen
+import com.sidequests.app.model.AbandonmentReason
 import com.sidequests.app.model.LocationMode
 import com.sidequests.app.model.Quest
 import com.sidequests.app.model.QuestDifficulty
@@ -353,14 +354,7 @@ fun ExitFlowScreen(
     viewModel: AppViewModel,
     modifier: Modifier = Modifier,
 ) {
-    val reasons = listOf(
-        "⏰" to "Ran out of time",
-        "🔒" to "Place is closed",
-        "😅" to "Too difficult for today",
-        "🌧" to "Weather / mood changed",
-        "💬" to "Something else",
-    )
-    var selectedReason by remember { mutableStateOf<String?>(null) }
+    var selectedReason by remember { mutableStateOf<AbandonmentReason?>(null) }
 
     Column(
         modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(24.dp),
@@ -376,28 +370,43 @@ fun ExitFlowScreen(
             color = DiscoveryTeal,
         )
         Spacer(Modifier.height(22.dp))
-        Text("Optional: what got in the way?", fontWeight = FontWeight.Bold)
+        Text("If you're ending it, what got in the way?", fontWeight = FontWeight.Bold)
+        Text(
+            "Choose one reason to start another quest. Saving progress does not abandon this one.",
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = .60f),
+            style = MaterialTheme.typography.bodySmall,
+        )
         Spacer(Modifier.height(8.dp))
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            reasons.forEach { (emoji, reason) ->
+            AbandonmentReason.entries.forEach { reason ->
                 ChoiceChip(
-                    text = reason,
-                    emoji = emoji,
+                    text = reason.label,
+                    emoji = reason.emoji,
                     selected = selectedReason == reason,
                     onClick = { selectedReason = if (selectedReason == reason) null else reason },
                 )
             }
         }
         Spacer(Modifier.weight(1f))
-        PrimaryButton("Save progress & exit", { viewModel.saveAndExit(selectedReason) })
+        PrimaryButton("Save progress & exit", viewModel::saveAndExit)
         Spacer(Modifier.height(8.dp))
         PrimaryButton("Keep going", { viewModel.navigate(AppScreen.ActiveQuest) }, containerColor = DiscoveryTeal)
         Spacer(Modifier.height(8.dp))
         Text(
             "Start another quest instead",
-            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable { viewModel.startAnotherQuest(selectedReason) }.padding(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .clickable(enabled = selectedReason != null) {
+                    selectedReason?.let(viewModel::startAnotherQuest)
+                }
+                .padding(12.dp),
             textAlign = TextAlign.Center,
-            color = ExplorerIndigo,
+            color = if (selectedReason == null) {
+                MaterialTheme.colorScheme.onSurface.copy(alpha = .35f)
+            } else {
+                ExplorerIndigo
+            },
             fontWeight = FontWeight.Bold,
         )
     }

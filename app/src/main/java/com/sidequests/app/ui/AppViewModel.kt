@@ -10,12 +10,14 @@ import com.sidequests.app.data.remote.SupabaseProvider
 import com.sidequests.app.data.progress.QuestProgressRepository
 import com.sidequests.app.data.progress.SupabaseQuestProgressRepository
 import com.sidequests.app.data.analytics.AnalyticsRepository
+import com.sidequests.app.data.analytics.buildBq6AbandonmentEvidence
 import com.sidequests.app.data.analytics.SupabaseAnalyticsRepository
 import com.sidequests.app.data.photo.PhotoProofRepository
 import com.sidequests.app.data.photo.SupabasePhotoProofRepository
 import com.sidequests.app.data.recommendation.RecommendationRepository
 import com.sidequests.app.data.recommendation.SupabaseRecommendationRepository
 import com.sidequests.app.model.AppScreen
+import com.sidequests.app.model.AbandonmentReason
 import com.sidequests.app.model.Quest
 import com.sidequests.app.model.QuestDifficulty
 import com.sidequests.app.model.QuestProgress
@@ -202,11 +204,21 @@ class AppViewModel(
 
     fun acceptQuest(questId: String) {
         val quest = repository.questById(questId)
-        val existingAttemptId = _uiState.value.attemptIdByQuest[questId]
-        val attemptId = existingAttemptId ?: UUID.randomUUID().toString()
+        val currentState = _uiState.value
+        val existingProgress = currentState.progressByQuest[questId]
+        val previousAttemptFinished = existingProgress?.let { progress ->
+            progress.abandoned || progress.completedSteps.size >= quest.steps.size
+        } ?: false
+        val existingAttemptId = currentState.attemptIdByQuest[questId]
+        val createsNewAttempt = existingAttemptId == null || previousAttemptFinished
+        val attemptId = if (createsNewAttempt) {
+            UUID.randomUUID().toString()
+        } else {
+            requireNotNull(existingAttemptId)
+        }
 
         _uiState.update { state ->
-            val progressMap = if (questId in state.progressByQuest) {
+            val progressMap = if (questId in state.progressByQuest && !previousAttemptFinished) {
                 state.progressByQuest
             } else {
                 state.progressByQuest + (questId to QuestProgress())
@@ -222,7 +234,7 @@ class AppViewModel(
             )
         }
 
-        if (existingAttemptId == null) {
+        if (createsNewAttempt) {
             syncProgress("Saving accepted quest…") {
                 progressRepository?.acceptQuest(questId, attemptId)
                     ?: Result.success(Unit)
@@ -525,7 +537,7 @@ class AppViewModel(
         }
     }
 
-    fun saveAndExit(reason: String?) {
+    fun saveAndExit() {
         val state = _uiState.value
         val questId = state.activeQuestId
         val current = state.progressByQuest[questId] ?: QuestProgress()
@@ -533,7 +545,7 @@ class AppViewModel(
         _uiState.update {
             it.copy(
                 progressByQuest = it.progressByQuest + (
-                    questId to current.copy(abandonReason = reason)
+                    questId to current.copy(abandonReason = null)
                 ),
                 screen = AppScreen.Explorer,
                 progressSyncError = null,
@@ -544,7 +556,9 @@ class AppViewModel(
             eventType = "quest_progress_saved",
             quest = repository.questById(questId),
             metadata = buildJsonObject {
-                if (reason != null) put("pause_reason", reason)
+                state.attemptIdByQuest[questId]?.let { put("attempt_id", it) }
+                put("current_step_index", current.currentStep)
+                put("completed_step_count", current.completedSteps.size)
             },
         )
 
@@ -554,16 +568,18 @@ class AppViewModel(
                 attemptId = attemptId,
                 currentStep = current.currentStep,
                 completedSteps = current.completedSteps,
-                reason = reason,
+                reason = null,
             ) ?: Result.success(Unit)
         }
     }
 
-    fun startAnotherQuest(reason: String?) {
+    fun startAnotherQuest(reason: AbandonmentReason) {
         val state = _uiState.value
         val questId = state.activeQuestId
         val quest = repository.questById(questId)
         val current = state.progressByQuest[questId] ?: QuestProgress()
+        val evidence = buildBq6AbandonmentEvidence(reason, quest, current)
+        val attemptId = state.attemptIdByQuest[questId]
 
         _uiState.update {
             it.copy(
@@ -573,6 +589,8 @@ class AppViewModel(
                         abandonReason = reason,
                     )
                 ),
+                skippedQuestIds = it.skippedQuestIds + questId,
+                attemptIdByQuest = it.attemptIdByQuest - questId,
                 screen = AppScreen.Explorer,
                 progressSyncError = null,
             )
@@ -582,17 +600,32 @@ class AppViewModel(
             eventType = "quest_abandoned",
             quest = quest,
             metadata = buildJsonObject {
-                if (reason != null) put("reason", reason)
+                put("schema_version", 1)
+                put("reason", evidence.reasonCode)
+                put("reason_code", evidence.reasonCode)
+                put("reason_label", evidence.reasonLabel)
+                put("quest_duration_minutes", evidence.questDurationMinutes)
+                put("estimated_cost", evidence.estimatedCost)
+                put("quest_distance_label", evidence.questDistanceLabel)
+                evidence.questDistanceMeters?.let { put("quest_distance_meters", it) }
+                put("quest_distance_band", evidence.questDistanceBand)
+                put("current_step_index", evidence.currentStepIndex)
+                put("completed_step_count", evidence.completedStepCount)
+                put("total_step_count", evidence.totalStepCount)
+                put("progress_percent", evidence.progressPercent)
+                put("had_photo_proof", evidence.hadPhotoProof)
+                put("uploaded_photo_proof_count", evidence.uploadedPhotoProofCount)
+                if (attemptId != null) put("attempt_id", attemptId)
             },
         )
 
-        val attemptId = state.attemptIdByQuest[questId] ?: return
+        if (attemptId == null) return
         syncProgress("Saving abandonment…") {
             progressRepository?.abandonQuest(
                 attemptId = attemptId,
                 currentStep = current.currentStep,
                 completedSteps = current.completedSteps,
-                reason = reason,
+                reason = reason.code,
             ) ?: Result.success(Unit)
         }
     }

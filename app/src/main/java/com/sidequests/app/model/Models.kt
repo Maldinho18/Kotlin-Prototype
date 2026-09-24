@@ -47,7 +47,7 @@ data class QuestProgress(
     val photoProofUploadingStep: Int? = null,
     val photoProofError: String? = null,
     val abandoned: Boolean = false,
-    val abandonReason: String? = null,
+    val abandonReason: AbandonmentReason? = null,
 ) {
     fun hasPhotoProof(stepIndex: Int): Boolean = stepIndex in localPhotoProofByStep
 }
