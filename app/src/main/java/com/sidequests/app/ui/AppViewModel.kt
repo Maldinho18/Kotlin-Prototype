@@ -87,6 +87,11 @@ class AppViewModel(
     fun activeProgress(): QuestProgress =
         _uiState.value.progressByQuest[_uiState.value.activeQuestId] ?: QuestProgress()
 
+    fun hasActiveQuest(): Boolean {
+        val state = _uiState.value
+        return state.activeQuestId in state.attemptIdByQuest
+    }
+
     fun recommendations(): List<Quest> {
         val state = _uiState.value
 
@@ -227,6 +232,7 @@ class AppViewModel(
             state.copy(
                 activeQuestId = questId,
                 progressByQuest = progressMap,
+                skippedQuestIds = state.skippedQuestIds - questId,
                 attemptIdByQuest = state.attemptIdByQuest + (questId to attemptId),
                 screen = if (quest.isGroup) AppScreen.GroupQuest else AppScreen.ActiveQuest,
                 progressSyncError = null,
@@ -643,6 +649,7 @@ class AppViewModel(
                 ratingsByQuest = it.ratingsByQuest + (
                     questId to QuestRating(stars, tags)
                 ),
+                attemptIdByQuest = it.attemptIdByQuest - questId,
                 screen = AppScreen.Explorer,
                 progressSyncError = null,
             )
