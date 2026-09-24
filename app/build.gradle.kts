@@ -14,6 +14,11 @@ val supabasePublishableKey = providers.gradleProperty("SUPABASE_PUBLISHABLE_KEY"
     .orElse("")
     .get()
 
+val supabaseQuestProofsBucket = providers.gradleProperty("SUPABASE_QUEST_PROOFS_BUCKET")
+    .orElse(providers.environmentVariable("SUPABASE_QUEST_PROOFS_BUCKET"))
+    .orElse("quest-proofs")
+    .get()
+
 fun String.asBuildConfigString(): String =
     "\"" + replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
@@ -33,6 +38,11 @@ android {
             "String",
             "SUPABASE_PUBLISHABLE_KEY",
             supabasePublishableKey.asBuildConfigString(),
+        )
+        buildConfigField(
+            "String",
+            "SUPABASE_QUEST_PROOFS_BUCKET",
+            supabaseQuestProofsBucket.asBuildConfigString(),
         )
     }
 
@@ -77,6 +87,7 @@ dependencies {
     implementation(platform("io.github.jan-tennert.supabase:bom:3.8.0"))
     implementation("io.github.jan-tennert.supabase:auth-kt")
     implementation("io.github.jan-tennert.supabase:postgrest-kt")
+    implementation("io.github.jan-tennert.supabase:storage-kt")
     implementation("io.ktor:ktor-client-android:3.5.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")

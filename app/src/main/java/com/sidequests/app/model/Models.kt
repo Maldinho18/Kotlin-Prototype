@@ -43,6 +43,8 @@ data class QuestProgress(
     val currentStep: Int = 0,
     val completedSteps: Set<Int> = emptySet(),
     val localPhotoProofByStep: Map<Int, String> = emptyMap(),
+    val uploadedPhotoProofByStep: Map<Int, String> = emptyMap(),
+    val photoProofUploadingStep: Int? = null,
     val photoProofError: String? = null,
     val abandoned: Boolean = false,
     val abandonReason: String? = null,

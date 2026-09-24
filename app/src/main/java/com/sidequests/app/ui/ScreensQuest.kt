@@ -264,9 +264,11 @@ fun ActiveQuestScreen(
                     }
                     if (active && step.requiresPhoto) {
                         val hasPhotoProof = progress.hasPhotoProof(index)
+                        val isUploading = progress.photoProofUploadingStep == index
+                        val isUploaded = index in progress.uploadedPhotoProofByStep
                         Spacer(Modifier.height(12.dp))
                         Surface(
-                            modifier = Modifier.fillMaxWidth().clickable {
+                            modifier = Modifier.fillMaxWidth().clickable(enabled = !isUploading) {
                                 runCatching { cameraService.createCapture(quest.id, index) }
                                     .onSuccess { capture ->
                                         pendingPhotoPath = capture.file.absolutePath
@@ -283,7 +285,12 @@ fun ActiveQuestScreen(
                             color = if (hasPhotoProof) DiscoveryTeal.copy(alpha = .16f) else MaterialTheme.colorScheme.surfaceVariant,
                         ) {
                             Text(
-                                if (hasPhotoProof) "✓ Full-resolution photo proof captured" else "📷 Capture photo proof",
+                                when {
+                                    isUploading -> "↥ Uploading photo proof…"
+                                    isUploaded -> "✓ Photo proof captured and uploaded"
+                                    hasPhotoProof -> "✓ Photo proof captured locally"
+                                    else -> "📷 Capture photo proof"
+                                },
                                 modifier = Modifier.padding(14.dp),
                                 textAlign = TextAlign.Center,
                                 color = if (hasPhotoProof) DiscoveryTeal else MaterialTheme.colorScheme.onSurface,
@@ -295,6 +302,15 @@ fun ActiveQuestScreen(
                             Text(
                                 error,
                                 color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            Text(
+                                "Retry upload",
+                                modifier = Modifier
+                                    .padding(top = 4.dp)
+                                    .clickable { viewModel.retryPhotoProofUpload(index) },
+                                color = ExplorerIndigo,
+                                fontWeight = FontWeight.Bold,
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
