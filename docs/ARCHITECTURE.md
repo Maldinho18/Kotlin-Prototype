@@ -3,13 +3,21 @@
 ```mermaid
 flowchart LR
     UI[Jetpack Compose screens] --> VM[AppViewModel]
-    VM --> REPO[SidequestsRepository]
-    REPO --> LOCAL[In-memory seed data]
+    UI --> CAMERA[CameraPhotoProofService]
+    CAMERA --> DEVICE[Device camera + private app files]
+    VM --> REPO[Domain repositories]
+    REPO --> SUPABASE[Supabase Auth / PostgREST / Storage]
+    REPO --> LOCAL[In-memory fallback]
+    VM --> ANALYTICS[AnalyticsRepository]
+    ANALYTICS --> EVENTS[public.analytics_events]
     VM --> STATE[StateFlow SidequestsUiState]
     STATE --> UI
 ```
 
-This draft uses a compact **MVVM-style presentation structure** plus a **Repository** boundary.
+This draft uses a compact **MVVM-style presentation structure** plus **Repository** and
+device-service boundaries. Android camera/file details stay inside `CameraPhotoProofService`,
+while Storage, progress, analytics, authentication, catalogue, and recommendation traffic
+use their respective repositories.
 
 ## Observer rationale
 
