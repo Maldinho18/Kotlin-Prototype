@@ -19,8 +19,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LinearProgressIndicator
@@ -180,8 +182,11 @@ fun ActiveQuestScreen(
             viewModel.markPhotoProofCaptured(stepIndex, file.absolutePath)
         } else {
             if (file != null) cameraService.discardCapture(file)
-            if (captured) {
-                viewModel.reportPhotoProofError("The camera did not produce a usable photo. Please try again.")
+            if (captured && stepIndex >= 0) {
+                viewModel.reportPhotoProofError(
+                    stepIndex,
+                    "The camera did not produce a usable photo. Please try again.",
+                )
             }
         }
     }
@@ -265,7 +270,7 @@ fun ActiveQuestScreen(
                     }
                     if (active && step.requiresPhoto) {
                         val hasPhotoProof = progress.hasPhotoProof(index)
-                        val isUploading = progress.photoProofUploadingStep == index
+                        val isUploading = index in progress.photoProofUploadingSteps
                         val isUploaded = index in progress.uploadedPhotoProofByStep
                         Spacer(Modifier.height(12.dp))
                         Surface(
@@ -278,6 +283,7 @@ fun ActiveQuestScreen(
                                     }
                                     .onFailure {
                                         viewModel.reportPhotoProofError(
+                                            index,
                                             "Photo proof could not be prepared. Please try again."
                                         )
                                     }
@@ -298,7 +304,7 @@ fun ActiveQuestScreen(
                                 fontWeight = FontWeight.Bold,
                             )
                         }
-                        progress.photoProofError?.let { error ->
+                        progress.photoProofErrorByStep[index]?.let { error ->
                             Spacer(Modifier.height(6.dp))
                             Text(
                                 error,
@@ -357,7 +363,11 @@ fun ExitFlowScreen(
     var selectedReason by remember { mutableStateOf<AbandonmentReason?>(null) }
 
     Column(
-        modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(24.dp),
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
     ) {
         Spacer(Modifier.height(16.dp))
         Text("PAUSING ${quest.title.uppercase()}", color = ExplorerIndigo, fontSize = 10.sp, fontWeight = FontWeight.Black)
@@ -387,7 +397,7 @@ fun ExitFlowScreen(
                 )
             }
         }
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.height(24.dp))
         PrimaryButton("Save progress & exit", viewModel::saveAndExit)
         Spacer(Modifier.height(8.dp))
         PrimaryButton("Keep going", { viewModel.navigate(AppScreen.ActiveQuest) }, containerColor = DiscoveryTeal)

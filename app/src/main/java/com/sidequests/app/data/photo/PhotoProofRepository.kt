@@ -40,7 +40,7 @@ class SupabasePhotoProofRepository(
 
             val userId = client.auth.currentUserOrNull()?.id
                 ?: error("No authenticated Supabase user is available.")
-            val safeQuestId = questId.replace(UNSAFE_PATH_CHARACTER, "_")
+            val safeQuestId = safePathSegment(questId)
             val storagePath = listOf(
                 userId,
                 attemptId,
@@ -62,5 +62,10 @@ class SupabasePhotoProofRepository(
 
     private companion object {
         val UNSAFE_PATH_CHARACTER = Regex("[^A-Za-z0-9._-]")
+
+        fun safePathSegment(value: String): String = value
+            .replace(UNSAFE_PATH_CHARACTER, "_")
+            .trim('.', '_')
+            .ifBlank { "quest" }
     }
 }

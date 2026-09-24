@@ -395,7 +395,7 @@ class AppViewModel(
                     questId to current.copy(
                         localPhotoProofByStep = current.localPhotoProofByStep + (stepIndex to localPath),
                         uploadedPhotoProofByStep = current.uploadedPhotoProofByStep - stepIndex,
-                        photoProofError = null,
+                        photoProofErrorByStep = current.photoProofErrorByStep - stepIndex,
                     )
                 )
             )
@@ -446,14 +446,16 @@ class AppViewModel(
         )
     }
 
-    fun reportPhotoProofError(message: String) {
+    fun reportPhotoProofError(stepIndex: Int, message: String) {
         val state = _uiState.value
         val questId = state.activeQuestId
         val current = state.progressByQuest[questId] ?: QuestProgress()
         _uiState.update {
             it.copy(
                 progressByQuest = it.progressByQuest + (
-                    questId to current.copy(photoProofError = message)
+                    questId to current.copy(
+                        photoProofErrorByStep = current.photoProofErrorByStep + (stepIndex to message)
+                    )
                 )
             )
         }
@@ -472,8 +474,8 @@ class AppViewModel(
             state.copy(
                 progressByQuest = state.progressByQuest + (
                     questId to current.copy(
-                        photoProofUploadingStep = stepIndex,
-                        photoProofError = null,
+                        photoProofUploadingSteps = current.photoProofUploadingSteps + stepIndex,
+                        photoProofErrorByStep = current.photoProofErrorByStep - stepIndex,
                     )
                 )
             )
@@ -494,8 +496,8 @@ class AppViewModel(
                                 questId to current.copy(
                                     uploadedPhotoProofByStep = current.uploadedPhotoProofByStep +
                                         (stepIndex to upload.storagePath),
-                                    photoProofUploadingStep = null,
-                                    photoProofError = null,
+                                    photoProofUploadingSteps = current.photoProofUploadingSteps - stepIndex,
+                                    photoProofErrorByStep = current.photoProofErrorByStep - stepIndex,
                                 )
                             )
                         )
@@ -518,8 +520,10 @@ class AppViewModel(
                         state.copy(
                             progressByQuest = state.progressByQuest + (
                                 questId to current.copy(
-                                    photoProofUploadingStep = null,
-                                    photoProofError = "Photo captured locally, but upload failed. Retry when connected.",
+                                    photoProofUploadingSteps = current.photoProofUploadingSteps - stepIndex,
+                                    photoProofErrorByStep = current.photoProofErrorByStep + (
+                                        stepIndex to "Photo captured locally, but upload failed. Retry when connected."
+                                    ),
                                 )
                             )
                         )

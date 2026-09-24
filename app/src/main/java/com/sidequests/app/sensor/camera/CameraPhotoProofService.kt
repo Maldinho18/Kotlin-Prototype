@@ -19,7 +19,7 @@ class CameraPhotoProofService(
     private val context: Context,
 ) {
     fun createCapture(questId: String, stepIndex: Int): PendingPhotoCapture {
-        val safeQuestId = questId.replace(UNSAFE_PATH_CHARACTER, "_")
+        val safeQuestId = safePathSegment(questId)
         val proofDirectory = File(context.filesDir, "quest-proofs/$safeQuestId")
         check(proofDirectory.mkdirs() || proofDirectory.isDirectory) {
             "Could not create the local photo-proof directory."
@@ -45,5 +45,10 @@ class CameraPhotoProofService(
 
     private companion object {
         val UNSAFE_PATH_CHARACTER = Regex("[^A-Za-z0-9._-]")
+
+        fun safePathSegment(value: String): String = value
+            .replace(UNSAFE_PATH_CHARACTER, "_")
+            .trim('.', '_')
+            .ifBlank { "quest" }
     }
 }
