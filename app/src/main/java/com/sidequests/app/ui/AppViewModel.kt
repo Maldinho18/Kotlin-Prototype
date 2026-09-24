@@ -359,12 +359,32 @@ class AppViewModel(
         }
     }
 
-    fun markPhotoProof() {
+    fun markPhotoProofCaptured(stepIndex: Int, localPath: String) {
         val state = _uiState.value
         val questId = state.activeQuestId
         val current = state.progressByQuest[questId] ?: QuestProgress()
         _uiState.update {
-            it.copy(progressByQuest = it.progressByQuest + (questId to current.copy(hasPhotoProof = true)))
+            it.copy(
+                progressByQuest = it.progressByQuest + (
+                    questId to current.copy(
+                        localPhotoProofByStep = current.localPhotoProofByStep + (stepIndex to localPath),
+                        photoProofError = null,
+                    )
+                )
+            )
+        }
+    }
+
+    fun reportPhotoProofError(message: String) {
+        val state = _uiState.value
+        val questId = state.activeQuestId
+        val current = state.progressByQuest[questId] ?: QuestProgress()
+        _uiState.update {
+            it.copy(
+                progressByQuest = it.progressByQuest + (
+                    questId to current.copy(photoProofError = message)
+                )
+            )
         }
     }
 

@@ -32,11 +32,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -48,9 +50,11 @@ import com.sidequests.app.model.QuestDifficulty
 import com.sidequests.app.model.QuestProgress
 import com.sidequests.app.model.SidequestsUiState
 import com.sidequests.app.model.SocialLevel
+import com.sidequests.app.sensor.camera.CameraPhotoProofService
 import com.sidequests.app.ui.theme.DiscoveryTeal
 import com.sidequests.app.ui.theme.ExplorerIndigo
 import com.sidequests.app.ui.theme.QuestAmber
+import java.io.File
 
 @Composable
 fun QuestDetailScreen(
@@ -159,8 +163,26 @@ fun ActiveQuestScreen(
     viewModel: AppViewModel,
     modifier: Modifier = Modifier,
 ) {
-    val photoLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
-        if (bitmap != null) viewModel.markPhotoProof()
+    val context = LocalContext.current
+    val cameraService = remember(context) {
+        CameraPhotoProofService(context.applicationContext)
+    }
+    var pendingPhotoPath by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingPhotoStep by rememberSaveable { mutableIntStateOf(-1) }
+    val photoLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { captured ->
+        val file = pendingPhotoPath?.let(::File)
+        val stepIndex = pendingPhotoStep
+        pendingPhotoPath = null
+        pendingPhotoStep = -1
+
+        if (captured && file != null && file.length() > 0 && stepIndex >= 0) {
+            viewModel.markPhotoProofCaptured(stepIndex, file.absolutePath)
+        } else {
+            if (file != null) cameraService.discardCapture(file)
+            if (captured) {
+                viewModel.reportPhotoProofError("The camera did not produce a usable photo. Please try again.")
+            }
+        }
     }
     val allDone = progress.completedSteps.size >= quest.steps.size
 
@@ -241,18 +263,39 @@ fun ActiveQuestScreen(
                         }
                     }
                     if (active && step.requiresPhoto) {
+                        val hasPhotoProof = progress.hasPhotoProof(index)
                         Spacer(Modifier.height(12.dp))
                         Surface(
-                            modifier = Modifier.fillMaxWidth().clickable { photoLauncher.launch(null) },
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                runCatching { cameraService.createCapture(quest.id, index) }
+                                    .onSuccess { capture ->
+                                        pendingPhotoPath = capture.file.absolutePath
+                                        pendingPhotoStep = capture.stepIndex
+                                        photoLauncher.launch(capture.uri)
+                                    }
+                                    .onFailure {
+                                        viewModel.reportPhotoProofError(
+                                            "Photo proof could not be prepared. Please try again."
+                                        )
+                                    }
+                            },
                             shape = RoundedCornerShape(16.dp),
-                            color = if (progress.hasPhotoProof) DiscoveryTeal.copy(alpha = .16f) else MaterialTheme.colorScheme.surfaceVariant,
+                            color = if (hasPhotoProof) DiscoveryTeal.copy(alpha = .16f) else MaterialTheme.colorScheme.surfaceVariant,
                         ) {
                             Text(
-                                if (progress.hasPhotoProof) "✓ Photo proof captured" else "📷 Capture photo proof",
+                                if (hasPhotoProof) "✓ Full-resolution photo proof captured" else "📷 Capture photo proof",
                                 modifier = Modifier.padding(14.dp),
                                 textAlign = TextAlign.Center,
-                                color = if (progress.hasPhotoProof) DiscoveryTeal else MaterialTheme.colorScheme.onSurface,
+                                color = if (hasPhotoProof) DiscoveryTeal else MaterialTheme.colorScheme.onSurface,
                                 fontWeight = FontWeight.Bold,
+                            )
+                        }
+                        progress.photoProofError?.let { error ->
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                error,
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
                             )
                         }
                     }
@@ -261,7 +304,7 @@ fun ActiveQuestScreen(
                         PrimaryButton(
                             text = if (index == quest.steps.lastIndex) "Complete final step ✓" else "Mark step complete ✓",
                             onClick = viewModel::completeCurrentStep,
-                            enabled = !step.requiresPhoto || progress.hasPhotoProof,
+                            enabled = !step.requiresPhoto || progress.hasPhotoProof(index),
                             containerColor = DiscoveryTeal,
                         )
                     }
