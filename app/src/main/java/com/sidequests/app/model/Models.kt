@@ -1,0 +1,89 @@
+package com.sidequests.app.model
+
+enum class QuestDifficulty { Easy, Medium, Hard }
+enum class LocationMode { Gps, Anywhere }
+enum class SocialLevel { Solo, Social, Group }
+
+data class QuestStep(
+    val title: String,
+    val description: String,
+    val requiresPhoto: Boolean = false,
+)
+
+data class GroupMember(
+    val name: String,
+    val avatar: String,
+    val completedSteps: Int,
+)
+
+data class Quest(
+    val id: String,
+    val title: String,
+    val category: String,
+    val emoji: String,
+    val duration: String,
+    val durationMinutes: Int,
+    val distance: String,
+    val budget: String,
+    val budgetAmount: Int,
+    val difficulty: QuestDifficulty,
+    val location: LocationMode,
+    val socialLevel: SocialLevel,
+    val description: String,
+    val isNew: Boolean = false,
+    val isSponsored: Boolean = false,
+    val sponsorName: String? = null,
+    val isGroup: Boolean = false,
+    val groupMembers: List<GroupMember> = emptyList(),
+    val steps: List<QuestStep>,
+    val tags: List<String>,
+)
+
+data class QuestProgress(
+    val currentStep: Int = 0,
+    val completedSteps: Set<Int> = emptySet(),
+    val hasPhotoProof: Boolean = false,
+    val abandoned: Boolean = false,
+    val abandonReason: String? = null,
+)
+
+data class UserPreferences(
+    val interests: Set<String> = emptySet(),
+    val difficulty: QuestDifficulty = QuestDifficulty.Easy,
+    val typicalTime: Int = 30,
+    val budgetMax: Int = 20,
+    val socialLevel: SocialLevel = SocialLevel.Solo,
+    val locationMode: String = "all",
+)
+
+data class QuestRating(
+    val stars: Int,
+    val tags: Set<String>,
+)
+
+enum class AppScreen {
+    Onboarding,
+    Explorer,
+    QuestDetail,
+    ActiveQuest,
+    ExitFlow,
+    Rating,
+    GroupQuest,
+    Profile,
+}
+
+data class SidequestsUiState(
+    val screen: AppScreen = AppScreen.Onboarding,
+    val onboardingStep: Int = 0,
+    val darkMode: Boolean = false,
+    val selectedQuestId: String = "botanical-garden",
+    val activeQuestId: String = "botanical-garden",
+    val preferences: UserPreferences = UserPreferences(),
+    val availableTime: Int = 30,
+    val selectedCategory: String = "All",
+    val progressByQuest: Map<String, QuestProgress> = emptyMap(),
+    val skippedQuestIds: Set<String> = emptySet(),
+    val ratingsByQuest: Map<String, QuestRating> = emptyMap(),
+    val notificationQuestId: String? = null,
+    val contextualNotificationShown: Boolean = false,
+)
