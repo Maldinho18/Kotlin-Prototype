@@ -3,6 +3,10 @@ package com.sidequests.app.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sidequests.app.BuildConfig
+import androidx.lifecycle.viewModelScope
+import com.sidequests.app.analytics.ContextAnalytics
+import com.sidequests.app.context.ContextManager
+import com.sidequests.app.context.QuestLocationMode
 import com.sidequests.app.data.InMemorySidequestsRepository
 import com.sidequests.app.data.SidequestsRepository
 import com.sidequests.app.data.SupabaseSidequestsRepository
@@ -29,11 +33,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
-import java.util.UUID
-import java.io.File
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
 
 class AppViewModel(
     private val repository: SidequestsRepository =
@@ -74,6 +73,39 @@ class AppViewModel(
     private val analyticsSessionId = UUID.randomUUID().toString()
 
     private val _uiState = MutableStateFlow(SidequestsUiState())
+
+    /**
+     * One id per app ViewModel/session. BQ10 uses distinct session ids
+     * to calculate the proportion of sessions using each location mode.
+     */
+    val sessionId: String = UUID.randomUUID().toString()
+
+    private var latestContext: com.sidequests.app.context.UserContext? = null
+
+    init {
+        refreshContext(trackSessionStart = true)
+    }
+
+    private fun refreshContext(trackSessionStart: Boolean) {
+        val manager = contextManager ?: return
+
+        viewModelScope.launch {
+            latestContext = manager.getCurrentContext()
+
+            if (trackSessionStart) {
+                val context = latestContext ?: return@launch
+                analytics?.trackSessionStarted(
+                    sessionId = sessionId,
+                    timeOfDay = context.timeOfDay,
+                    weatherCondition = context.weather?.condition,
+                )
+            }
+        }
+    }
+
+    fun refreshContextAfterPermission() {
+        refreshContext(trackSessionStart = false)
+    }
     val uiState: StateFlow<SidequestsUiState> = _uiState.asStateFlow()
 
     val categories: List<String> get() = repository.categories()
