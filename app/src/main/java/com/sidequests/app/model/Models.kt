@@ -42,10 +42,15 @@ data class Quest(
 data class QuestProgress(
     val currentStep: Int = 0,
     val completedSteps: Set<Int> = emptySet(),
-    val hasPhotoProof: Boolean = false,
+    val localPhotoProofByStep: Map<Int, String> = emptyMap(),
+    val uploadedPhotoProofByStep: Map<Int, String> = emptyMap(),
+    val photoProofUploadingSteps: Set<Int> = emptySet(),
+    val photoProofErrorByStep: Map<Int, String> = emptyMap(),
     val abandoned: Boolean = false,
-    val abandonReason: String? = null,
-)
+    val abandonReason: AbandonmentReason? = null,
+) {
+    fun hasPhotoProof(stepIndex: Int): Boolean = stepIndex in localPhotoProofByStep
+}
 
 data class UserPreferences(
     val interests: Set<String> = emptySet(),

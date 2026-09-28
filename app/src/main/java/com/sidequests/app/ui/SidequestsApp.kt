@@ -134,15 +134,18 @@ private fun AuthenticatedSidequestsContent(
             ) {
                 BottomBar(
                     screen = state.screen,
+                    questAvailable = viewModel.hasActiveQuest(),
                     onNavigate = { target ->
                         if (target == AppScreen.ActiveQuest) {
-                            viewModel.navigate(
-                                if (viewModel.activeQuest().isGroup) {
-                                    AppScreen.GroupQuest
-                                } else {
-                                    AppScreen.ActiveQuest
-                                }
-                            )
+                            if (viewModel.hasActiveQuest()) {
+                                viewModel.navigate(
+                                    if (viewModel.activeQuest().isGroup) {
+                                        AppScreen.GroupQuest
+                                    } else {
+                                        AppScreen.ActiveQuest
+                                    }
+                                )
+                            }
                         } else {
                             viewModel.navigate(target)
                         }

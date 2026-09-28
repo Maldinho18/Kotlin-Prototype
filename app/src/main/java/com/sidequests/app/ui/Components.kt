@@ -166,6 +166,7 @@ fun QuestCard(
 @Composable
 fun BottomBar(
     screen: AppScreen,
+    questAvailable: Boolean,
     onNavigate: (AppScreen) -> Unit,
 ) {
     val active = when (screen) {
@@ -191,16 +192,24 @@ fun BottomBar(
         ) {
             tabs.forEach { (target, emoji, label) ->
                 val selected = active == target
+                val enabled = target != AppScreen.ActiveQuest || questAvailable
                 Column(
-                    modifier = Modifier.clip(RoundedCornerShape(14.dp)).clickable { onNavigate(target) }.padding(horizontal = 24.dp, vertical = 5.dp),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable(enabled = enabled) { onNavigate(target) }
+                        .padding(horizontal = 24.dp, vertical = 5.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Text(emoji, fontSize = 20.sp)
+                    Text(emoji, fontSize = 20.sp, color = Color.White.copy(alpha = if (enabled) 1f else .35f))
                     Text(
                         label.uppercase(),
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (selected) ExplorerIndigo else MaterialTheme.colorScheme.onSurface.copy(alpha = .5f),
+                        color = when {
+                            !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = .28f)
+                            selected -> ExplorerIndigo
+                            else -> MaterialTheme.colorScheme.onSurface.copy(alpha = .5f)
+                        },
                     )
                     Spacer(Modifier.height(2.dp))
                     Box(

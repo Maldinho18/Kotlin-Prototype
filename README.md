@@ -29,8 +29,11 @@ See [`docs/VALIDATION.md`](docs/VALIDATION.md) for the validation checklist.
 - Simulated contextual recommendation banner.
 - Quest detail view.
 - Active quest view with four-step progress.
-- Native camera preview launcher for photo-proof steps.
+- Full-resolution native camera capture with one photo proof per required step.
+- Private Supabase Storage upload for photo proofs, including local state and retry.
 - Save-and-exit flow.
+- Structured abandonment reasons and BQ6 analytics evidence for duration, cost, distance,
+  progress, and photo-proof state.
 - Rating/feedback flow.
 - Group quest view.
 - Editable profile/preferences view.
@@ -59,7 +62,7 @@ See [`docs/MS7_VIEW_MAP.md`](docs/MS7_VIEW_MAP.md) for the detailed mapping and 
 
 The draft intentionally uses a small architecture that can grow into Sprint 2:
 
-`Compose UI -> AppViewModel -> SidequestsRepository -> in-memory seed data`
+`Compose UI -> AppViewModel -> repositories -> Supabase / local fallback`
 
 The UI observes `StateFlow<SidequestsUiState>`. Actions update state through the ViewModel and Compose reacts to the new state. This is the concrete Observer-style flow used in the draft.
 
@@ -67,18 +70,18 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Important scope boundary
 
-This is a **native prototype / Sprint 2 foundation**, not a claim that all Sprint 2 integrations are finished. The following are still simulated or local:
+This is a **native prototype / Sprint 2 foundation**, not a claim that all Sprint 2 integrations are finished. The following remain outside this branch:
 
 - contextual trigger: simulated after entering Explorer;
-- recommendation engine: local scoring, not analytics/backend-driven;
-- user identity: local demo profile, no real authentication provider;
-- data: in-memory seed data, no persistence/backend;
 - location: UI filter only, no real GPS query;
 - external service: not connected;
-- analytics pipeline and Business Questions: not connected;
-- dedicated sensor feature: not connected yet.
+- analytics ETL/dashboard: not contained in this mobile repository;
+- offline upload queue across process restarts: not implemented yet.
 
-These follow-up items are listed in [`docs/SPRINT2_NEXT.md`](docs/SPRINT2_NEXT.md).
+This branch does include Supabase Auth, the remote quest catalogue, lifecycle persistence,
+analytics event writes, BQ5 recommendation RPC consumption, camera-backed photo proof,
+and the BQ6 event contract. See [`docs/SENSOR_QUEST_LIFECYCLE.md`](docs/SENSOR_QUEST_LIFECYCLE.md)
+for the Storage policy and validation boundary.
 
 ## Toolchain
 

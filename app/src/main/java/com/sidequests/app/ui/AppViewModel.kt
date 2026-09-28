@@ -2,6 +2,7 @@ package com.sidequests.app.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sidequests.app.BuildConfig
 import com.sidequests.app.data.InMemorySidequestsRepository
 import com.sidequests.app.data.SidequestsRepository
 import com.sidequests.app.data.SupabaseSidequestsRepository
@@ -9,10 +10,14 @@ import com.sidequests.app.data.remote.SupabaseProvider
 import com.sidequests.app.data.progress.QuestProgressRepository
 import com.sidequests.app.data.progress.SupabaseQuestProgressRepository
 import com.sidequests.app.data.analytics.AnalyticsRepository
+import com.sidequests.app.data.analytics.buildBq6AbandonmentEvidence
 import com.sidequests.app.data.analytics.SupabaseAnalyticsRepository
+import com.sidequests.app.data.photo.PhotoProofRepository
+import com.sidequests.app.data.photo.SupabasePhotoProofRepository
 import com.sidequests.app.data.recommendation.RecommendationRepository
 import com.sidequests.app.data.recommendation.SupabaseRecommendationRepository
 import com.sidequests.app.model.AppScreen
+import com.sidequests.app.model.AbandonmentReason
 import com.sidequests.app.model.Quest
 import com.sidequests.app.model.QuestDifficulty
 import com.sidequests.app.model.QuestProgress
@@ -26,6 +31,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.UUID
+import java.io.File
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
@@ -54,6 +60,15 @@ class AppViewModel(
         } else {
             null
         },
+    private val photoProofRepository: PhotoProofRepository? =
+        if (SupabaseProvider.isConfigured) {
+            SupabasePhotoProofRepository(
+                client = SupabaseProvider.client,
+                bucketName = BuildConfig.SUPABASE_QUEST_PROOFS_BUCKET,
+            )
+        } else {
+            null
+        },
 ) : ViewModel() {
 
     private val analyticsSessionId = UUID.randomUUID().toString()
@@ -71,6 +86,11 @@ class AppViewModel(
 
     fun activeProgress(): QuestProgress =
         _uiState.value.progressByQuest[_uiState.value.activeQuestId] ?: QuestProgress()
+
+    fun hasActiveQuest(): Boolean {
+        val state = _uiState.value
+        return state.activeQuestId in state.attemptIdByQuest
+    }
 
     fun recommendations(): List<Quest> {
         val state = _uiState.value
@@ -189,11 +209,21 @@ class AppViewModel(
 
     fun acceptQuest(questId: String) {
         val quest = repository.questById(questId)
-        val existingAttemptId = _uiState.value.attemptIdByQuest[questId]
-        val attemptId = existingAttemptId ?: UUID.randomUUID().toString()
+        val currentState = _uiState.value
+        val existingProgress = currentState.progressByQuest[questId]
+        val previousAttemptFinished = existingProgress?.let { progress ->
+            progress.abandoned || progress.completedSteps.size >= quest.steps.size
+        } ?: false
+        val existingAttemptId = currentState.attemptIdByQuest[questId]
+        val createsNewAttempt = existingAttemptId == null || previousAttemptFinished
+        val attemptId = if (createsNewAttempt) {
+            UUID.randomUUID().toString()
+        } else {
+            requireNotNull(existingAttemptId)
+        }
 
         _uiState.update { state ->
-            val progressMap = if (questId in state.progressByQuest) {
+            val progressMap = if (questId in state.progressByQuest && !previousAttemptFinished) {
                 state.progressByQuest
             } else {
                 state.progressByQuest + (questId to QuestProgress())
@@ -202,6 +232,7 @@ class AppViewModel(
             state.copy(
                 activeQuestId = questId,
                 progressByQuest = progressMap,
+                skippedQuestIds = state.skippedQuestIds - questId,
                 attemptIdByQuest = state.attemptIdByQuest + (questId to attemptId),
                 screen = if (quest.isGroup) AppScreen.GroupQuest else AppScreen.ActiveQuest,
                 progressSyncError = null,
@@ -209,7 +240,7 @@ class AppViewModel(
             )
         }
 
-        if (existingAttemptId == null) {
+        if (createsNewAttempt) {
             syncProgress("Saving accepted quest…") {
                 progressRepository?.acceptQuest(questId, attemptId)
                     ?: Result.success(Unit)
@@ -359,16 +390,164 @@ class AppViewModel(
         }
     }
 
-    fun markPhotoProof() {
+    fun markPhotoProofCaptured(stepIndex: Int, localPath: String) {
+        val state = _uiState.value
+        val questId = state.activeQuestId
+        val quest = repository.questById(questId)
+        val current = state.progressByQuest[questId] ?: QuestProgress()
+        _uiState.update {
+            it.copy(
+                progressByQuest = it.progressByQuest + (
+                    questId to current.copy(
+                        localPhotoProofByStep = current.localPhotoProofByStep + (stepIndex to localPath),
+                        uploadedPhotoProofByStep = current.uploadedPhotoProofByStep - stepIndex,
+                        photoProofErrorByStep = current.photoProofErrorByStep - stepIndex,
+                    )
+                )
+            )
+        }
+
+        val attemptId = state.attemptIdByQuest[questId]
+        val photoFile = File(localPath)
+        trackEvent(
+            eventType = "photo_proof_captured",
+            quest = quest,
+            metadata = buildJsonObject {
+                put("step_index", stepIndex)
+                put("byte_count", photoFile.length())
+                put("verification_type", "photo")
+                put("stored_locally", true)
+                if (attemptId != null) put("attempt_id", attemptId)
+            },
+        )
+
+        val remote = photoProofRepository
+        if (attemptId != null && remote != null) {
+            uploadPhotoProof(
+                quest = quest,
+                attemptId = attemptId,
+                stepIndex = stepIndex,
+                photoFile = photoFile,
+                remote = remote,
+            )
+        }
+    }
+
+    fun retryPhotoProofUpload(stepIndex: Int) {
+        val state = _uiState.value
+        val questId = state.activeQuestId
+        val attemptId = state.attemptIdByQuest[questId] ?: return
+        val localPath = state.progressByQuest[questId]
+            ?.localPhotoProofByStep
+            ?.get(stepIndex)
+            ?: return
+        val remote = photoProofRepository ?: return
+
+        uploadPhotoProof(
+            quest = repository.questById(questId),
+            attemptId = attemptId,
+            stepIndex = stepIndex,
+            photoFile = File(localPath),
+            remote = remote,
+        )
+    }
+
+    fun reportPhotoProofError(stepIndex: Int, message: String) {
         val state = _uiState.value
         val questId = state.activeQuestId
         val current = state.progressByQuest[questId] ?: QuestProgress()
         _uiState.update {
-            it.copy(progressByQuest = it.progressByQuest + (questId to current.copy(hasPhotoProof = true)))
+            it.copy(
+                progressByQuest = it.progressByQuest + (
+                    questId to current.copy(
+                        photoProofErrorByStep = current.photoProofErrorByStep + (stepIndex to message)
+                    )
+                )
+            )
         }
     }
 
-    fun saveAndExit(reason: String?) {
+    private fun uploadPhotoProof(
+        quest: Quest,
+        attemptId: String,
+        stepIndex: Int,
+        photoFile: File,
+        remote: PhotoProofRepository,
+    ) {
+        val questId = quest.id
+        _uiState.update { state ->
+            val current = state.progressByQuest[questId] ?: QuestProgress()
+            state.copy(
+                progressByQuest = state.progressByQuest + (
+                    questId to current.copy(
+                        photoProofUploadingSteps = current.photoProofUploadingSteps + stepIndex,
+                        photoProofErrorByStep = current.photoProofErrorByStep - stepIndex,
+                    )
+                )
+            )
+        }
+
+        viewModelScope.launch {
+            remote.upload(
+                attemptId = attemptId,
+                questId = questId,
+                stepIndex = stepIndex,
+                photoFile = photoFile,
+            )
+                .onSuccess { upload ->
+                    _uiState.update { state ->
+                        val current = state.progressByQuest[questId] ?: QuestProgress()
+                        state.copy(
+                            progressByQuest = state.progressByQuest + (
+                                questId to current.copy(
+                                    uploadedPhotoProofByStep = current.uploadedPhotoProofByStep +
+                                        (stepIndex to upload.storagePath),
+                                    photoProofUploadingSteps = current.photoProofUploadingSteps - stepIndex,
+                                    photoProofErrorByStep = current.photoProofErrorByStep - stepIndex,
+                                )
+                            )
+                        )
+                    }
+                    trackEvent(
+                        eventType = "photo_proof_uploaded",
+                        quest = quest,
+                        metadata = buildJsonObject {
+                            put("attempt_id", attemptId)
+                            put("step_index", stepIndex)
+                            put("byte_count", upload.byteCount)
+                            put("storage_path", upload.storagePath)
+                            put("verification_type", "photo")
+                        },
+                    )
+                }
+                .onFailure {
+                    _uiState.update { state ->
+                        val current = state.progressByQuest[questId] ?: QuestProgress()
+                        state.copy(
+                            progressByQuest = state.progressByQuest + (
+                                questId to current.copy(
+                                    photoProofUploadingSteps = current.photoProofUploadingSteps - stepIndex,
+                                    photoProofErrorByStep = current.photoProofErrorByStep + (
+                                        stepIndex to "Photo captured locally, but upload failed. Retry when connected."
+                                    ),
+                                )
+                            )
+                        )
+                    }
+                    trackEvent(
+                        eventType = "photo_proof_upload_failed",
+                        quest = quest,
+                        metadata = buildJsonObject {
+                            put("attempt_id", attemptId)
+                            put("step_index", stepIndex)
+                            put("verification_type", "photo")
+                        },
+                    )
+                }
+        }
+    }
+
+    fun saveAndExit() {
         val state = _uiState.value
         val questId = state.activeQuestId
         val current = state.progressByQuest[questId] ?: QuestProgress()
@@ -376,7 +555,7 @@ class AppViewModel(
         _uiState.update {
             it.copy(
                 progressByQuest = it.progressByQuest + (
-                    questId to current.copy(abandonReason = reason)
+                    questId to current.copy(abandonReason = null)
                 ),
                 screen = AppScreen.Explorer,
                 progressSyncError = null,
@@ -387,7 +566,9 @@ class AppViewModel(
             eventType = "quest_progress_saved",
             quest = repository.questById(questId),
             metadata = buildJsonObject {
-                if (reason != null) put("pause_reason", reason)
+                state.attemptIdByQuest[questId]?.let { put("attempt_id", it) }
+                put("current_step_index", current.currentStep)
+                put("completed_step_count", current.completedSteps.size)
             },
         )
 
@@ -397,16 +578,18 @@ class AppViewModel(
                 attemptId = attemptId,
                 currentStep = current.currentStep,
                 completedSteps = current.completedSteps,
-                reason = reason,
+                reason = null,
             ) ?: Result.success(Unit)
         }
     }
 
-    fun startAnotherQuest(reason: String?) {
+    fun startAnotherQuest(reason: AbandonmentReason) {
         val state = _uiState.value
         val questId = state.activeQuestId
         val quest = repository.questById(questId)
         val current = state.progressByQuest[questId] ?: QuestProgress()
+        val evidence = buildBq6AbandonmentEvidence(reason, quest, current)
+        val attemptId = state.attemptIdByQuest[questId]
 
         _uiState.update {
             it.copy(
@@ -416,6 +599,8 @@ class AppViewModel(
                         abandonReason = reason,
                     )
                 ),
+                skippedQuestIds = it.skippedQuestIds + questId,
+                attemptIdByQuest = it.attemptIdByQuest - questId,
                 screen = AppScreen.Explorer,
                 progressSyncError = null,
             )
@@ -425,17 +610,32 @@ class AppViewModel(
             eventType = "quest_abandoned",
             quest = quest,
             metadata = buildJsonObject {
-                if (reason != null) put("reason", reason)
+                put("schema_version", 1)
+                put("reason", evidence.reasonCode)
+                put("reason_code", evidence.reasonCode)
+                put("reason_label", evidence.reasonLabel)
+                put("quest_duration_minutes", evidence.questDurationMinutes)
+                put("estimated_cost", evidence.estimatedCost)
+                put("quest_distance_label", evidence.questDistanceLabel)
+                evidence.questDistanceMeters?.let { put("quest_distance_meters", it) }
+                put("quest_distance_band", evidence.questDistanceBand)
+                put("current_step_index", evidence.currentStepIndex)
+                put("completed_step_count", evidence.completedStepCount)
+                put("total_step_count", evidence.totalStepCount)
+                put("progress_percent", evidence.progressPercent)
+                put("had_photo_proof", evidence.hadPhotoProof)
+                put("uploaded_photo_proof_count", evidence.uploadedPhotoProofCount)
+                if (attemptId != null) put("attempt_id", attemptId)
             },
         )
 
-        val attemptId = state.attemptIdByQuest[questId] ?: return
+        if (attemptId == null) return
         syncProgress("Saving abandonment…") {
             progressRepository?.abandonQuest(
                 attemptId = attemptId,
                 currentStep = current.currentStep,
                 completedSteps = current.completedSteps,
-                reason = reason,
+                reason = reason.code,
             ) ?: Result.success(Unit)
         }
     }
@@ -449,6 +649,7 @@ class AppViewModel(
                 ratingsByQuest = it.ratingsByQuest + (
                     questId to QuestRating(stars, tags)
                 ),
+                attemptIdByQuest = it.attemptIdByQuest - questId,
                 screen = AppScreen.Explorer,
                 progressSyncError = null,
             )
