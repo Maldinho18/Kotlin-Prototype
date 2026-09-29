@@ -19,6 +19,18 @@ device-service boundaries. Android camera/file details stay inside `CameraPhotoP
 while Storage, progress, analytics, authentication, catalogue, and recommendation traffic
 use their respective repositories.
 
+## Strategy rationale
+
+Recommendations come from a RecommendationStrategy interface. The current
+ContextAwareRecommendationEngine is one implementation, so the ranking logic
+can be changed without changing AppViewModel.
+
+## Information hiding
+
+ContextManager hides the GPS, weather service and clock details from the UI.
+The ViewModel only asks for UserContext and the recommendation strategy only
+receives that context.
+
 ## Observer rationale
 
 `AppViewModel` publishes `StateFlow<SidequestsUiState>` and `SidequestsApp` subscribes with `collectAsStateWithLifecycle()`. When actions change state, subscribers are notified and Compose recomposes the affected UI. This gives the Kotlin subgroup a concrete reactive Observer-style flow to explain and refine.
