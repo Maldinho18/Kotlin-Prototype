@@ -19,9 +19,6 @@ val supabaseQuestProofsBucket = providers.gradleProperty("SUPABASE_QUEST_PROOFS_
     .orElse("quest-proofs")
     .get()
 
-fun String.asBuildConfigString(): String =
-    """ + replace("\\", "\\\\").replace(""", "\\"") + """
-
 android {
     namespace = "com.sidequests.app"
     compileSdk = 36
@@ -33,9 +30,9 @@ android {
         versionCode = 1
         versionName = "0.2.0"
 
-        buildConfigField("String", "SUPABASE_URL", supabaseUrl.asBuildConfigString())
-        buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", supabasePublishableKey.asBuildConfigString())
-        buildConfigField("String", "SUPABASE_QUEST_PROOFS_BUCKET", supabaseQuestProofsBucket.asBuildConfigString())
+        buildConfigField("String", "SUPABASE_URL", "\"" + supabaseUrl + "\"")
+        buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", "\"" + supabasePublishableKey + "\"")
+        buildConfigField("String", "SUPABASE_QUEST_PROOFS_BUCKET", "\"" + supabaseQuestProofsBucket + "\"")
     }
 
     buildTypes {
