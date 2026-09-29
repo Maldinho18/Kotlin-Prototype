@@ -1,16 +1,12 @@
 package com.sidequests.app.ui
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
-import com.sidequests.app.analytics.ContextAnalytics
-import com.sidequests.app.context.ContextManager
-import com.sidequests.app.context.QuestLocationMode
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.sidequests.app.BuildConfig
-import androidx.lifecycle.viewModelScope
-import com.sidequests.app.analytics.ContextAnalytics
+import com.sidequests.app.context.ContextAwareRecommendationEngine
 import com.sidequests.app.context.ContextManager
-import com.sidequests.app.context.QuestLocationMode
+import com.sidequests.app.context.ContextUiState
 import com.sidequests.app.data.InMemorySidequestsRepository
 import com.sidequests.app.data.SidequestsRepository
 import com.sidequests.app.data.SupabaseSidequestsRepository
@@ -38,81 +34,66 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import java.io.File
 import java.util.UUID
-
 class AppViewModel(
+    private val contextManager: ContextManager,
     private val repository: SidequestsRepository =
-        if (SupabaseProvider.isConfigured) {
-            SupabaseSidequestsRepository(SupabaseProvider.client)
-        } else {
-            InMemorySidequestsRepository()
-        },
+        if (SupabaseProvider.isConfigured) SupabaseSidequestsRepository(SupabaseProvider.client)
+        else InMemorySidequestsRepository(),
     private val progressRepository: QuestProgressRepository? =
-        if (SupabaseProvider.isConfigured) {
-            SupabaseQuestProgressRepository(SupabaseProvider.client)
-        } else {
-            null
-        },
+        if (SupabaseProvider.isConfigured) SupabaseQuestProgressRepository(SupabaseProvider.client)
+        else null,
     private val analyticsRepository: AnalyticsRepository? =
-        if (SupabaseProvider.isConfigured) {
-            SupabaseAnalyticsRepository(SupabaseProvider.client)
-        } else {
-            null
-        },
+        if (SupabaseProvider.isConfigured) SupabaseAnalyticsRepository(SupabaseProvider.client)
+        else null,
     private val recommendationRepository: RecommendationRepository? =
-        if (SupabaseProvider.isConfigured) {
-            SupabaseRecommendationRepository(SupabaseProvider.client)
-        } else {
-            null
-        },
+        if (SupabaseProvider.isConfigured) SupabaseRecommendationRepository(SupabaseProvider.client)
+        else null,
     private val photoProofRepository: PhotoProofRepository? =
         if (SupabaseProvider.isConfigured) {
             SupabasePhotoProofRepository(
                 client = SupabaseProvider.client,
                 bucketName = BuildConfig.SUPABASE_QUEST_PROOFS_BUCKET,
             )
-        } else {
-            null
-        },
+        } else null,
 ) : ViewModel() {
 
     private val analyticsSessionId = UUID.randomUUID().toString()
-
+    private val recommendationEngine = ContextAwareRecommendationEngine()
     private val _uiState = MutableStateFlow(SidequestsUiState())
-
-    /**
-     * One id per app ViewModel/session. BQ10 uses distinct session ids
-     * to calculate the proportion of sessions using each location mode.
-     */
-    val sessionId: String = UUID.randomUUID().toString()
-
-    private var latestContext: com.sidequests.app.context.UserContext? = null
+    private val _contextState = MutableStateFlow(ContextUiState())
+    val uiState: StateFlow<SidequestsUiState> = _uiState.asStateFlow()
+    val contextState: StateFlow<ContextUiState> = _contextState.asStateFlow()
 
     init {
-        refreshContext(trackSessionStart = true)
+        refreshContext()
+        refreshQuestCatalog()
     }
 
-    private fun refreshContext(trackSessionStart: Boolean) {
-        val manager = contextManager ?: return
-
+    fun refreshContext() {
         viewModelScope.launch {
-            latestContext = manager.getCurrentContext()
-
-            if (trackSessionStart) {
-                val context = latestContext ?: return@launch
-                analytics?.trackSessionStarted(
-                    sessionId = sessionId,
-                    timeOfDay = context.timeOfDay,
-                    weatherCondition = context.weather?.condition,
-                )
-            }
+            _contextState.update { it.copy(loading = true, error = null) }
+            runCatching { contextManager.readContext() }
+                .onSuccess { context ->
+                    _contextState.value = ContextUiState(
+                        loading = false,
+                        context = context,
+                        error = null,
+                    )
+                }
+                .onFailure { error ->
+                    _contextState.update {
+                        it.copy(
+                            loading = false,
+                            error = error.message ?: "Context unavailable",
+                        )
+                    }
+                }
         }
     }
-
-    fun refreshContextAfterPermission() {
-        refreshContext(trackSessionStart = false)
-    }
-    val uiState: StateFlow<SidequestsUiState> = _uiState.asStateFlow()
 
     val categories: List<String> get() = repository.categories()
 
@@ -133,21 +114,28 @@ class AppViewModel(
     fun recommendations(): List<Quest> {
         val state = _uiState.value
 
-        if (state.remoteRecommendationIds.isNotEmpty()) {
-            return state.remoteRecommendationIds.mapNotNull { id ->
+        val base = if (state.remoteRecommendationIds.isNotEmpty()) {
+            state.remoteRecommendationIds.mapNotNull { id ->
                 repository.allQuests().firstOrNull { it.id == id }
             }
+        } else {
+            val completedIds = state.progressByQuest
+                .filterValues { it.completedSteps.size >= 4 }
+                .keys
+            val inProgressIds = state.progressByQuest
+                .filterValues { it.completedSteps.size in 1..3 && !it.abandoned }
+                .keys
+
+            repository.recommendations(
+                availableMinutes = state.availableTime,
+                preferences = state.preferences,
+                skippedIds = state.skippedQuestIds,
+                completedIds = completedIds,
+                inProgressIds = inProgressIds,
+            )
         }
 
-        val completedIds = state.progressByQuest.filterValues { it.completedSteps.size >= 4 }.keys
-        val inProgressIds = state.progressByQuest.filterValues { it.completedSteps.size in 1..3 && !it.abandoned }.keys
-        return repository.recommendations(
-            availableMinutes = state.availableTime,
-            preferences = state.preferences,
-            skippedIds = state.skippedQuestIds,
-            completedIds = completedIds,
-            inProgressIds = inProgressIds,
-        )
+        return recommendationEngine.apply(base, _contextState.value.context)
     }
 
 
@@ -364,31 +352,44 @@ class AppViewModel(
     }
 
     fun setLocationMode(mode: String) {
+        val normalized = mode.lowercase()
         _uiState.update {
-            it.copy(preferences = it.preferences.copy(locationMode = mode))
-        }
-
-        val contextManager = contextManager ?: return
-        val analytics = analytics ?: return
-
-        viewModelScope.launch {
-            val context = contextManager.getCurrentContext()
-            latestContext = context
-
-            val eventMode = when (mode) {
-                "gps" -> QuestLocationMode.LOCATION_BASED
-                "anywhere" -> QuestLocationMode.LOCATION_INDEPENDENT
-                else -> QuestLocationMode.ALL
-            }
-
-            analytics.trackLocationModeSelected(
-                sessionId = sessionId,
-                mode = eventMode,
-                timeOfDay = context.timeOfDay,
-                weatherCondition = context.weather?.condition,
+            it.copy(
+                preferences = it.preferences.copy(locationMode = normalized),
+                remoteRecommendationIds = emptyList(),
             )
         }
+
+        val eventType = when (normalized) {
+            "anywhere" -> "location_independent_mode_selected"
+            "gps" -> "location_based_mode_selected"
+            else -> "location_mode_all_selected"
+        }
+
+        viewModelScope.launch {
+            val context = runCatching { contextManager.readContext() }
+                .getOrElse { _contextState.value.context }
+
+            _contextState.update {
+                it.copy(context = context, loading = false)
+            }
+
+            trackEvent(
+                eventType = eventType,
+                metadata = buildJsonObject {
+                    put("location_mode", normalized)
+                    put("time_of_day", context.timeOfDay.name.lowercase())
+                    put(
+                        "weather_condition",
+                        context.weather?.condition?.name?.lowercase() ?: "unknown",
+                    )
+                },
+            )
+
+            refreshRecommendations()
+        }
     }
+
 
     fun completeCurrentStep() {
         val state = _uiState.value
@@ -792,5 +793,18 @@ class AppViewModel(
                 screen = AppScreen.QuestDetail,
             )
         }
+    }
+}
+
+
+class AppViewModelFactory(
+    private val contextManager: ContextManager,
+) : ViewModelProvider.Factory {
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        require(modelClass.isAssignableFrom(AppViewModel::class.java)) {
+            "Unknown ViewModel class: ${modelClass.name}"
+        }
+        return AppViewModel(contextManager = contextManager) as T
     }
 }
