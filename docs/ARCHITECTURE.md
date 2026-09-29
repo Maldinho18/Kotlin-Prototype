@@ -19,17 +19,19 @@ device-service boundaries. Android camera/file details stay inside `CameraPhotoP
 while Storage, progress, analytics, authentication, catalogue, and recommendation traffic
 use their respective repositories.
 
-## Strategy rationale
+## Facade rationale
 
-Recommendations come from a RecommendationStrategy interface. The current
-ContextAwareRecommendationEngine is one implementation, so the ranking logic
-can be changed without changing AppViewModel.
+The assigned design pattern for this work is **Facade**, implemented by
+ContextManager. The ViewModel asks ContextManager for the current UserContext
+through one entry point, while ContextManager hides the GPS provider, weather
+service and clock details behind that interface.
 
 ## Information hiding
 
-ContextManager hides the GPS, weather service and clock details from the UI.
-The ViewModel only asks for UserContext and the recommendation strategy only
-receives that context.
+ContextManager keeps the context collection details inside the context package.
+The UI and ViewModel do not need to know how location, weather or time are
+obtained. Recommendation logic receives the resulting UserContext instead of
+calling those services directly.
 
 ## Observer rationale
 
