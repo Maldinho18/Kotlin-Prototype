@@ -1,5 +1,6 @@
 package com.sidequests.app.ui
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -39,6 +40,24 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.io.File
 import java.util.UUID
+class AppViewModelFactory(
+    private val appContext: Context,
+) : ViewModelProvider.Factory {
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        if (!modelClass.isAssignableFrom(AppViewModel::class.java)) {
+            throw IllegalArgumentException("Unknown ViewModel: ${modelClass.name}")
+        }
+
+        return AppViewModel(
+            contextManager = ContextManager(
+                locationProvider = com.sidequests.app.context.AndroidLocationProvider(appContext),
+                weatherProvider = com.sidequests.app.context.OpenMeteoWeatherProvider(),
+            )
+        ) as T
+    }
+}
+
 class AppViewModel(
     private val contextManager: ContextManager,
     private val repository: SidequestsRepository =
