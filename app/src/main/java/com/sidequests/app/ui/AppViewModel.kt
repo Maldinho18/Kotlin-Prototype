@@ -29,6 +29,7 @@ import com.sidequests.app.model.QuestRating
 import com.sidequests.app.model.SidequestsUiState
 import com.sidequests.app.model.SocialLevel
 import com.sidequests.app.model.UserPreferences
+import com.sidequests.app.domain.QuestStepCompletionPolicy
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -396,6 +397,22 @@ class AppViewModel(
         val questId = state.activeQuestId
         val quest = repository.questById(questId)
         val current = state.progressByQuest[questId] ?: QuestProgress()
+        val currentStep = quest.steps.getOrNull(current.currentStep) ?: return
+        val completionDecision = QuestStepCompletionPolicy.evaluate(
+            stepIndex = current.currentStep,
+            step = currentStep,
+            progress = current,
+        )
+        if (!completionDecision.allowed) {
+            _uiState.update {
+                it.copy(
+                    progressSyncError = completionDecision.reason,
+                    progressSyncMessage = null,
+                )
+            }
+            return
+        }
+
         val nextCompleted = current.completedSteps + current.currentStep
         val completed = nextCompleted.size >= quest.steps.size
         val nextStep = if (current.currentStep < quest.steps.lastIndex) {
