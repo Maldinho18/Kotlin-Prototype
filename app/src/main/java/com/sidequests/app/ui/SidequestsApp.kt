@@ -19,7 +19,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.compose.ui.platform.LocalContext
 import com.sidequests.app.model.AppScreen
 import com.sidequests.app.model.SidequestsUiState
 import com.sidequests.app.ui.auth.AuthScreen
@@ -31,7 +30,7 @@ import kotlinx.coroutines.delay
 
 @Composable
 fun SidequestsApp(
-    appViewModel: AppViewModel = viewModel(factory = AppViewModelFactory(LocalContext.current.applicationContext)),
+    appViewModel: AppViewModel = viewModel(),
     authViewModel: AuthViewModel = viewModel(),
 ) {
     val appState by appViewModel.uiState.collectAsStateWithLifecycle()
