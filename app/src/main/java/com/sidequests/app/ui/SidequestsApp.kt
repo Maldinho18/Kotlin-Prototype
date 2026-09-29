@@ -1,5 +1,8 @@
 package com.sidequests.app.ui
 
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -7,9 +10,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import android.Manifest
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -20,6 +20,7 @@ import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sidequests.app.model.AppScreen
+import com.sidequests.app.model.SidequestsUiState
 import com.sidequests.app.ui.auth.AuthScreen
 import com.sidequests.app.ui.auth.AuthStage
 import com.sidequests.app.ui.auth.AuthViewModel
@@ -34,6 +35,7 @@ fun SidequestsApp(
 ) {
     val appState by appViewModel.uiState.collectAsStateWithLifecycle()
     val authState by authViewModel.uiState.collectAsStateWithLifecycle()
+
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) {
@@ -71,6 +73,14 @@ fun SidequestsApp(
                     state = appState,
                     viewModel = appViewModel,
                     onSignOut = authViewModel::signOut,
+                    onRequestLocation = {
+                        locationPermissionLauncher.launch(
+                            arrayOf(
+                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                Manifest.permission.ACCESS_COARSE_LOCATION,
+                            )
+                        )
+                    },
                 )
             }
         }
@@ -79,9 +89,10 @@ fun SidequestsApp(
 
 @Composable
 private fun AuthenticatedSidequestsContent(
-    state: com.sidequests.app.model.SidequestsUiState,
+    state: SidequestsUiState,
     viewModel: AppViewModel,
     onSignOut: () -> Unit,
+    onRequestLocation: () -> Unit,
 ) {
     LaunchedEffect(Unit) {
         viewModel.refreshQuestCatalog()
@@ -94,59 +105,84 @@ private fun AuthenticatedSidequestsContent(
         }
     }
 
-        Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                Box(modifier = Modifier.weight(1f)) {
-                    when (state.screen) {
-                        AppScreen.Auth -> AuthScreen(state, appViewModel)
-                        AppScreen.Auth -> AuthScreen(state, appViewModel)
-                        AppScreen.Onboarding -> OnboardingScreen(state, appViewModel)
-                        AppScreen.Explorer -> ExplorerScreen(
-                            state = state,
-                            viewModel = appViewModel,
-                            contextState = appViewModel.contextState.collectAsStateWithLifecycle().value,
-                            onRequestLocation = {
-                                locationPermissionLauncher.launch(
-                                    arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
-                                )
-                            },
-                        )
-                        AppScreen.Explorer -> ExplorerScreen(
-                            state = state,
-                            viewModel = appViewModel,
-                            contextState = appViewModel.contextState.collectAsStateWithLifecycle().value,
-                            onRequestLocation = {
-                                locationPermissionLauncher.launch(
-                                    arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
-                                )
-                            },
-                        )
-                        AppScreen.QuestDetail -> QuestDetailScreen(appViewModel.selectedQuest(), appViewModel)
-                        AppScreen.ActiveQuest -> ActiveQuestScreen(
-                            quest = appViewModel.activeQuest(),
-                            progress = appViewModel.activeProgress(),
-                            viewModel = appViewModel,
-                        )
-                        AppScreen.ExitFlow -> ExitFlowScreen(
-                            quest = appViewModel.activeQuest(),
-                            progress = appViewModel.activeProgress(),
-                            viewModel = appViewModel,
-                        )
-                        AppScreen.Rating -> RatingScreen(appViewModel.activeQuest(), appViewModel)
-                        AppScreen.GroupQuest -> GroupQuestScreen(appViewModel.activeQuest(), appViewModel)
-                        AppScreen.Profile -> ProfileScreen(state, appViewModel)
-                    }
-                }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Box(modifier = Modifier.weight(1f)) {
+                when (state.screen) {
+                    AppScreen.Auth -> AuthScreen(
+                        state = com.sidequests.app.ui.auth.AuthUiState(
+                            stage = AuthStage.SignedOut,
+                        ),
+                        onSignIn = { _, _ -> },
+                        onSignUp = { _, _, _ -> },
+                        onClearFeedback = {},
+                    )
 
-                if (state.screen !in setOf(AppScreen.Onboarding, AppScreen.ExitFlow, AppScreen.Rating)) {
-                    BottomBar(
-                        screen = state.screen,
-                        onNavigate = { target ->
-                            if (target == AppScreen.ActiveQuest) {
-                                appViewModel.navigate(
-                                    if (appViewModel.activeQuest().isGroup) AppScreen.GroupQuest else AppScreen.ActiveQuest
-                                )
-                            }
+                    AppScreen.Onboarding -> OnboardingScreen(state, viewModel)
+
+                    AppScreen.Explorer -> ExplorerScreen(
+                        state = state,
+                        viewModel = viewModel,
+                        contextState = viewModel.contextState.collectAsStateWithLifecycle().value,
+                        onRequestLocation = onRequestLocation,
+                    )
+
+                    AppScreen.QuestDetail -> QuestDetailScreen(
+                        viewModel.selectedQuest(),
+                        viewModel,
+                    )
+
+                    AppScreen.ActiveQuest -> ActiveQuestScreen(
+                        quest = viewModel.activeQuest(),
+                        progress = viewModel.activeProgress(),
+                        viewModel = viewModel,
+                    )
+
+                    AppScreen.ExitFlow -> ExitFlowScreen(
+                        quest = viewModel.activeQuest(),
+                        progress = viewModel.activeProgress(),
+                        viewModel = viewModel,
+                    )
+
+                    AppScreen.Rating -> RatingScreen(
+                        viewModel.activeQuest(),
+                        viewModel,
+                    )
+
+                    AppScreen.GroupQuest -> GroupQuestScreen(
+                        viewModel.activeQuest(),
+                        viewModel,
+                    )
+
+                    AppScreen.Profile -> ProfileScreen(
+                        state,
+                        viewModel,
+                    )
+                }
+            }
+
+            if (state.screen !in setOf(
+                    AppScreen.Onboarding,
+                    AppScreen.ExitFlow,
+                    AppScreen.Rating,
+                )
+            ) {
+                BottomBar(
+                    screen = state.screen,
+                    questAvailable = viewModel.hasActiveQuest(),
+                    onNavigate = { target ->
+                        if (target == AppScreen.ActiveQuest) {
+                            viewModel.navigate(
+                                if (viewModel.activeQuest().isGroup) {
+                                    AppScreen.GroupQuest
+                                } else {
+                                    AppScreen.ActiveQuest
+                                }
+                            )
                         } else {
                             viewModel.navigate(target)
                         }
@@ -156,14 +192,18 @@ private fun AuthenticatedSidequestsContent(
         }
 
         state.notificationQuestId?.let { questId ->
-            ContextNotificationBanner(
-                quest = viewModel.allQuests().first { it.id == questId },
-                onOpen = viewModel::openNotificationQuest,
-                onDismiss = viewModel::dismissNotification,
-                modifier = Modifier
-                    .zIndex(10f)
-                    .padding(top = 28.dp),
-            )
+            viewModel.allQuests()
+                .firstOrNull { it.id == questId }
+                ?.let { quest ->
+                    ContextNotificationBanner(
+                        quest = quest,
+                        onOpen = viewModel::openNotificationQuest,
+                        onDismiss = viewModel::dismissNotification,
+                        modifier = Modifier
+                            .zIndex(10f)
+                            .padding(top = 28.dp),
+                    )
+                }
         }
     }
 }
