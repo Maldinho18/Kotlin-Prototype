@@ -795,16 +795,3 @@ class AppViewModel(
         }
     }
 }
-
-
-class AppViewModelFactory(
-    private val contextManager: ContextManager,
-) : ViewModelProvider.Factory {
-    @Suppress("UNCHECKED_CAST")
-    override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        require(modelClass.isAssignableFrom(AppViewModel::class.java)) {
-            "Unknown ViewModel class: ${modelClass.name}"
-        }
-        return AppViewModel(contextManager = contextManager) as T
-    }
-}
