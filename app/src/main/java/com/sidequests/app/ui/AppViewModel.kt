@@ -14,6 +14,7 @@ import com.sidequests.app.data.remote.SupabaseProvider
 import com.sidequests.app.data.progress.QuestProgressRepository
 import com.sidequests.app.data.progress.SupabaseQuestProgressRepository
 import com.sidequests.app.data.analytics.AnalyticsRepository
+import com.sidequests.app.data.analytics.buildRecommendationContextMetadata
 import com.sidequests.app.data.analytics.buildBq6AbandonmentEvidence
 import com.sidequests.app.data.analytics.SupabaseAnalyticsRepository
 import com.sidequests.app.data.photo.PhotoProofRepository
@@ -201,15 +202,16 @@ class AppViewModel(
                         )
                     }
 
+                    val contextSnapshot = _contextState.value.context
                     ids.forEachIndexed { index, id ->
                         repository.allQuests().firstOrNull { it.id == id }?.let { quest ->
                             trackEvent(
                                 eventType = "recommendation_shown",
                                 quest = quest,
-                                metadata = buildJsonObject {
-                                    put("rank", index + 1)
-                                    put("source", "bq5_rpc")
-                                },
+                                metadata = buildRecommendationContextMetadata(
+                                    context = contextSnapshot,
+                                    rank = index + 1,
+                                ),
                             )
                         }
                     }
