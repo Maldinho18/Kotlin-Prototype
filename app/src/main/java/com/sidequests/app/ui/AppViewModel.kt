@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.sidequests.app.BuildConfig
 import com.sidequests.app.context.ContextAwareRecommendationEngine
+import com.sidequests.app.context.RecommendationStrategy
 import com.sidequests.app.context.ContextManager
 import com.sidequests.app.context.ContextUiState
 import com.sidequests.app.data.InMemorySidequestsRepository
@@ -62,7 +63,7 @@ class AppViewModel(
 ) : ViewModel() {
 
     private val analyticsSessionId = UUID.randomUUID().toString()
-    private val recommendationEngine = ContextAwareRecommendationEngine()
+    private val recommendationStrategy: RecommendationStrategy = ContextAwareRecommendationEngine()
     private val _uiState = MutableStateFlow(SidequestsUiState())
     private val _contextState = MutableStateFlow(ContextUiState())
     val uiState: StateFlow<SidequestsUiState> = _uiState.asStateFlow()
@@ -135,7 +136,7 @@ class AppViewModel(
             )
         }
 
-        return recommendationEngine.apply(base, _contextState.value.context)
+        return recommendationStrategy.apply(base, _contextState.value.context)
     }
 
 
@@ -360,12 +361,6 @@ class AppViewModel(
             )
         }
 
-        val eventType = when (normalized) {
-            "anywhere" -> "location_independent_mode_selected"
-            "gps" -> "location_based_mode_selected"
-            else -> "location_mode_all_selected"
-        }
-
         viewModelScope.launch {
             val context = runCatching { contextManager.readContext() }
                 .getOrElse { _contextState.value.context }
@@ -375,7 +370,7 @@ class AppViewModel(
             }
 
             trackEvent(
-                eventType = eventType,
+                eventType = "location_mode_selected",
                 metadata = buildJsonObject {
                     put("location_mode", normalized)
                     put("time_of_day", context.timeOfDay.name.lowercase())
