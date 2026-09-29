@@ -633,6 +633,13 @@ fun ProfileScreen(
             }
         }
         item {
+            Text("ACCOUNT", fontSize = 10.sp, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .5f))
+            Text(
+                "Authenticated user",
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = .65f),
+            )
+        }
+        item {
             Text("BADGES", fontSize = 10.sp, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .5f))
         }
         item {
