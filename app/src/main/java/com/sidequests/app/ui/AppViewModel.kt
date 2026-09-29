@@ -2,6 +2,10 @@ package com.sidequests.app.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sidequests.app.analytics.ContextAnalytics
+import com.sidequests.app.context.ContextManager
+import com.sidequests.app.context.QuestLocationMode
+import androidx.lifecycle.viewModelScope
 import com.sidequests.app.BuildConfig
 import androidx.lifecycle.viewModelScope
 import com.sidequests.app.analytics.ContextAnalytics
@@ -33,6 +37,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import java.util.UUID
 
 class AppViewModel(
     private val repository: SidequestsRepository =
@@ -359,15 +365,29 @@ class AppViewModel(
 
     fun setLocationMode(mode: String) {
         _uiState.update {
-            it.copy(
-                preferences = it.preferences.copy(locationMode = mode),
-                remoteRecommendationIds = emptyList(),
+            it.copy(preferences = it.preferences.copy(locationMode = mode))
+        }
+
+        val contextManager = contextManager ?: return
+        val analytics = analytics ?: return
+
+        viewModelScope.launch {
+            val context = contextManager.getCurrentContext()
+            latestContext = context
+
+            val eventMode = when (mode) {
+                "gps" -> QuestLocationMode.LOCATION_BASED
+                "anywhere" -> QuestLocationMode.LOCATION_INDEPENDENT
+                else -> QuestLocationMode.ALL
+            }
+
+            analytics.trackLocationModeSelected(
+                sessionId = sessionId,
+                mode = eventMode,
+                timeOfDay = context.timeOfDay,
+                weatherCondition = context.weather?.condition,
             )
         }
-        trackEvent(
-            eventType = "location_mode_selected",
-            metadata = buildJsonObject { put("mode", mode) },
-        )
     }
 
     fun completeCurrentStep() {

@@ -8,6 +8,16 @@ val localProperties = Properties().apply {
 
 fun localProperty(name: String): String = localProperties.getProperty(name, "")
 
+import java.util.Properties
+import java.io.FileInputStream
+
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) load(FileInputStream(file))
+}
+
+fun localProperty(name: String): String = localProperties.getProperty(name, "")
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
@@ -41,10 +51,12 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "0.2.0"
 
-        buildConfigField("String", "SUPABASE_URL", ""$supabaseUrl"")
-        buildConfigField("String", "SUPABASE_ANON_KEY", ""$supabaseAnonKey"")
+    buildConfigField("String", "SUPABASE_URL", "\"${localProperty("SUPABASE_URL")}\"")
+    buildConfigField("String", "SUPABASE_ANON_KEY", "\"${localProperty("SUPABASE_ANON_KEY")}\"")
+    buildConfigField("String", "SUPABASE_ACCESS_TOKEN", "\"${localProperty("SUPABASE_ACCESS_TOKEN")}\"")
+    buildConfigField("String", "SUPABASE_USER_ID", "\"${localProperty("SUPABASE_USER_ID")}\"")
     }
 
     buildTypes {

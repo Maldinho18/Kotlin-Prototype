@@ -79,20 +79,7 @@ enum class AppScreen {
 }
 
 data class SidequestsUiState(
-    val screen: AppScreen = AppScreen.Auth,
-    val authenticated: Boolean = false,
-    val authLoading: Boolean = false,
-    val authError: String? = null,
-    val authModeSignUp: Boolean = false,
-    val authEmail: String = "",
-    val authUserId: String? = null,
-    val catalogLoading: Boolean = false,
-    val catalogSource: String = "Local fallback",
-    val catalogError: String? = null,
-    val remoteRecommendationIds: List<String> = emptyList(),
-    val recommendationLoading: Boolean = false,
-    val recommendationSource: String = "Local fallback",
-    val recommendationError: String? = null,
+    val screen: AppScreen = AppScreen.Onboarding,
     val onboardingStep: Int = 0,
     val darkMode: Boolean = false,
     val selectedQuestId: String = "botanical-garden",
