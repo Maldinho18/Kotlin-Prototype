@@ -1,38 +1,23 @@
 package com.sidequests.app.context
 
-import java.util.Calendar
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
 
 class ContextManager(
     private val locationProvider: LocationProvider,
-    private val weatherService: WeatherService
+    private val weatherProvider: WeatherProvider,
+    private val timeProvider: TimeProvider = SystemTimeProvider(),
 ) {
-
-    suspend fun getCurrentContext(): UserContext {
+    suspend fun readContext(): UserContext = withContext(Dispatchers.IO) {
         val location = locationProvider.getCurrentLocation()
-
-        val weather = location?.let {
-            weatherService.getWeather(
-                latitude = it.latitude,
-                longitude = it.longitude
-            )
-        }
-
-        return UserContext(
+        val weather = location?.let { weatherProvider.getWeather(it) }
+        val now = timeProvider.now()
+        UserContext(
             location = location,
             weather = weather,
-            timeOfDay = currentTimeOfDay(),
-            timestamp = System.currentTimeMillis()
+            timeOfDay = timeOfDayFromHour(now.hour),
+            timestamp = now.toInstant(),
         )
-    }
-
-    private fun currentTimeOfDay(): TimeOfDay {
-        val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-
-        return when (hour) {
-            in 6..11 -> TimeOfDay.MORNING
-            in 12..17 -> TimeOfDay.AFTERNOON
-            in 18..21 -> TimeOfDay.EVENING
-            else -> TimeOfDay.NIGHT
-        }
     }
 }

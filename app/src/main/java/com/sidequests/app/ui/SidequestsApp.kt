@@ -7,6 +7,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -31,6 +34,11 @@ fun SidequestsApp(
 ) {
     val appState by appViewModel.uiState.collectAsStateWithLifecycle()
     val authState by authViewModel.uiState.collectAsStateWithLifecycle()
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) {
+        appViewModel.refreshContext()
+    }
 
     SidequestsTheme(darkTheme = appState.darkMode) {
         when (authState.stage) {
@@ -86,48 +94,42 @@ private fun AuthenticatedSidequestsContent(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-    ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            Box(modifier = Modifier.weight(1f)) {
-                when (state.screen) {
-                    AppScreen.Onboarding -> OnboardingScreen(state, viewModel)
-                    AppScreen.Explorer -> ExplorerScreen(state, viewModel)
-                    AppScreen.QuestDetail -> QuestDetailScreen(
-                        viewModel.selectedQuest(),
-                        viewModel,
-                    )
-                    AppScreen.ActiveQuest -> ActiveQuestScreen(
-                        quest = viewModel.activeQuest(),
-                        progress = viewModel.activeProgress(),
-                        viewModel = viewModel,
-                    )
-                    AppScreen.ExitFlow -> ExitFlowScreen(
-                        quest = viewModel.activeQuest(),
-                        progress = viewModel.activeProgress(),
-                        viewModel = viewModel,
-                    )
-                    AppScreen.Rating -> RatingScreen(
-                        viewModel.activeQuest(),
-                        viewModel,
-                    )
-                    AppScreen.GroupQuest -> GroupQuestScreen(
-                        viewModel.activeQuest(),
-                        viewModel,
-                    )
-                    AppScreen.Profile -> ProfileScreen(
-                        state = state,
-                        viewModel = viewModel,
-                        onSignOut = onSignOut,
-                    )
+        Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                Box(modifier = Modifier.weight(1f)) {
+                    when (state.screen) {
+                        AppScreen.Auth -> AuthScreen(state, appViewModel)
+                        AppScreen.Onboarding -> OnboardingScreen(state, appViewModel)
+                        AppScreen.Explorer -> ExplorerScreen(
+                            state = state,
+                            viewModel = appViewModel,
+                            contextState = appViewModel.contextState.collectAsStateWithLifecycle().value,
+                            onRequestLocation = {
+                                locationPermissionLauncher.launch(
+                                    arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+                                )
+                            },
+                        )
+                        AppScreen.QuestDetail -> QuestDetailScreen(appViewModel.selectedQuest(), appViewModel)
+                        AppScreen.ActiveQuest -> ActiveQuestScreen(
+                            quest = appViewModel.activeQuest(),
+                            progress = appViewModel.activeProgress(),
+                            viewModel = appViewModel,
+                        )
+                        AppScreen.ExitFlow -> ExitFlowScreen(
+                            quest = appViewModel.activeQuest(),
+                            progress = appViewModel.activeProgress(),
+                            viewModel = appViewModel,
+                        )
+                        AppScreen.Rating -> RatingScreen(appViewModel.activeQuest(), appViewModel)
+                        AppScreen.GroupQuest -> GroupQuestScreen(appViewModel.activeQuest(), appViewModel)
+                        AppScreen.Profile -> ProfileScreen(state, appViewModel)
+                    }
                 }
             }
 
             if (state.screen !in setOf(
-                    AppScreen.Onboarding,
+                    AppScreen.Auth, AppScreen.Onboarding,
                     AppScreen.ExitFlow,
                     AppScreen.Rating,
                 )

@@ -633,6 +633,14 @@ fun ProfileScreen(
             }
         }
         item {
+            Text("ACCOUNT", fontSize = 10.sp, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .5f))
+            Text(state.authEmail.ifBlank { "Authenticated user" }, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .65f))
+            OutlinedButton(
+                onClick = viewModel::signOut,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            ) { Text("Sign out") }
+        }
+        item {
             Text("BADGES", fontSize = 10.sp, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .5f))
         }
         item {
