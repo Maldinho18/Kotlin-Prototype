@@ -159,8 +159,9 @@ private fun AuthenticatedSidequestsContent(
                     )
 
                     AppScreen.Profile -> ProfileScreen(
-                        state,
-                        viewModel,
+                        state = state,
+                        viewModel = viewModel,
+                        onSignOut = onSignOut,
                     )
                 }
             }
