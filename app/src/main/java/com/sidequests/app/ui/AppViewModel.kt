@@ -369,17 +369,25 @@ class AppViewModel(
                 it.copy(context = context, loading = false)
             }
 
-            trackEvent(
-                eventType = "location_mode_selected",
-                metadata = buildJsonObject {
-                    put("location_mode", normalized)
-                    put("time_of_day", context.timeOfDay.name.lowercase())
-                    put(
-                        "weather_condition",
-                        context.weather?.condition?.name?.lowercase() ?: "unknown",
-                    )
-                },
-            )
+            val eventType = when (normalized) {
+                "anywhere" -> "location_independent_mode_selected"
+                "gps" -> "location_based_mode_selected"
+                else -> null
+            }
+
+            eventType?.let { selectedEvent ->
+                trackEvent(
+                    eventType = selectedEvent,
+                    metadata = buildJsonObject {
+                        put("location_mode", normalized)
+                        put("time_of_day", context.timeOfDay.name.lowercase())
+                        put(
+                            "weather_condition",
+                            context.weather?.condition?.name?.lowercase() ?: "unknown",
+                        )
+                    },
+                )
+            }
 
             refreshRecommendations()
         }
