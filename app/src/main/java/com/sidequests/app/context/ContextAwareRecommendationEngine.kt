@@ -3,14 +3,14 @@ package com.sidequests.app.context
 import com.sidequests.app.model.LocationMode
 import com.sidequests.app.model.Quest
 
-/**
- * Context-aware extension of the shared BQ5 recommendation result.
- * It uses time of day, current weather and GPS availability without
- * replacing the team's Supabase BQ5 recommendation source.
- */
-class ContextAwareRecommendationEngine {
+interface RecommendationStrategy {
+    fun apply(base: List<Quest>, context: UserContext): List<Quest>
+}
 
-    fun apply(base: List<Quest>, context: UserContext): List<Quest> {
+// Reorders the BQ5 results using the context available on the device.
+class ContextAwareRecommendationEngine : RecommendationStrategy {
+
+    override fun apply(base: List<Quest>, context: UserContext): List<Quest> {
         val weather = context.weather?.condition ?: WeatherCondition.UNKNOWN
 
         return base
