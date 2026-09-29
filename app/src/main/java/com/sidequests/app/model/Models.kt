@@ -94,6 +94,13 @@ data class SidequestsUiState(
     val progressSyncing: Boolean = false,
     val progressSyncError: String? = null,
     val progressSyncMessage: String? = null,
+    val catalogLoading: Boolean = false,
+    val catalogError: String? = null,
+    val catalogSource: String = "Local catalogue",
+    val recommendationLoading: Boolean = false,
+    val recommendationError: String? = null,
+    val recommendationSource: String = "Local fallback",
+    val remoteRecommendationIds: List<String> = emptyList(),
     val notificationQuestId: String? = null,
     val contextualNotificationShown: Boolean = false,
 )
