@@ -35,6 +35,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sidequests.app.model.QuestDifficulty
+import com.sidequests.app.context.ContextUiState
+import com.sidequests.app.context.label
 import com.sidequests.app.model.SidequestsUiState
 import com.sidequests.app.model.SocialLevel
 import com.sidequests.app.ui.theme.DiscoveryTeal
@@ -225,6 +227,8 @@ private fun DifficultyOption(
 fun ExplorerScreen(
     state: SidequestsUiState,
     viewModel: AppViewModel,
+    contextState: ContextUiState,
+    onRequestLocation: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val recommendations = viewModel.recommendations()
@@ -276,6 +280,15 @@ fun ExplorerScreen(
         }
 
         item {
+            ContextAwareCard(
+                contextState = contextState,
+                locationMode = state.preferences.locationMode,
+                onRequestLocation = onRequestLocation,
+                onRefresh = viewModel::refreshContext,
+            )
+        }
+
+        item {
             Card(
                 modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth(),
                 shape = RoundedCornerShape(24.dp),
@@ -322,6 +335,77 @@ fun ExplorerScreen(
                 onOpen = { viewModel.openQuestDetail(quest.id) },
                 modifier = Modifier.padding(horizontal = 20.dp),
             )
+        }
+    }
+}
+
+@Composable
+private fun ContextAwareCard(
+    contextState: ContextUiState,
+    locationMode: String,
+    onRequestLocation: () -> Unit,
+    onRefresh: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .35f)),
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("LIVE CONTEXT", fontSize = 10.sp, fontWeight = FontWeight.Black, color = DiscoveryTeal, letterSpacing = 1.1.sp)
+                    Text(
+                        text = if (contextState.loading) "Updating context…" else "${contextState.context.timeOfDay.label()} • ${contextState.context.weather?.condition?.label() ?: "Weather unavailable"}",
+                        fontWeight = FontWeight.Bold,
+                    )
+                    val locationText = if (contextState.context.location != null) "📍 Location available" else "📍 Location not available"
+                    Text(locationText, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .62f))
+                }
+                Text(
+                    text = when (locationMode) {
+                        "gps" -> "Nearby"
+                        "anywhere" -> "Anywhere"
+                        else -> "All"
+                    },
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            if (contextState.context.weather != null) {
+                Text(
+                    "${contextState.context.weather.temperatureCelsius.toInt()}°C • context-aware recommendations active",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = .55f),
+                )
+            }
+            if (contextState.context.location == null) {
+                Text(
+                    "Enable location to use Nearby quests. Anywhere works without GPS.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = .6f),
+                )
+                Surface(
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(onClick = onRequestLocation),
+                    color = DiscoveryTeal,
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Text("Enable location", modifier = Modifier.padding(vertical = 10.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                }
+            } else {
+                Text(
+                    "Refresh context",
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(onClick = onRefresh).padding(vertical = 8.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    color = DiscoveryTeal,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp,
+                )
+            }
+            contextState.error?.let {
+                Text("Context fallback: $it", fontSize = 10.sp, color = MaterialTheme.colorScheme.error)
+            }
         }
     }
 }

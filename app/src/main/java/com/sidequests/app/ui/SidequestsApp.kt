@@ -6,6 +6,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -23,6 +26,11 @@ fun SidequestsApp(
     appViewModel: AppViewModel = viewModel(),
 ) {
     val state by appViewModel.uiState.collectAsStateWithLifecycle()
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) {
+        appViewModel.refreshContext()
+    }
 
     SidequestsTheme(darkTheme = state.darkMode) {
         LaunchedEffect(state.screen, state.contextualNotificationShown) {
@@ -36,8 +44,18 @@ fun SidequestsApp(
             Column(modifier = Modifier.fillMaxSize()) {
                 Box(modifier = Modifier.weight(1f)) {
                     when (state.screen) {
+                        AppScreen.Auth -> AuthScreen(state, appViewModel)
                         AppScreen.Onboarding -> OnboardingScreen(state, appViewModel)
-                        AppScreen.Explorer -> ExplorerScreen(state, appViewModel)
+                        AppScreen.Explorer -> ExplorerScreen(
+                            state = state,
+                            viewModel = appViewModel,
+                            contextState = appViewModel.contextState.collectAsStateWithLifecycle().value,
+                            onRequestLocation = {
+                                locationPermissionLauncher.launch(
+                                    arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+                                )
+                            },
+                        )
                         AppScreen.QuestDetail -> QuestDetailScreen(appViewModel.selectedQuest(), appViewModel)
                         AppScreen.ActiveQuest -> ActiveQuestScreen(
                             quest = appViewModel.activeQuest(),
@@ -55,7 +73,7 @@ fun SidequestsApp(
                     }
                 }
 
-                if (state.screen !in setOf(AppScreen.Onboarding, AppScreen.ExitFlow, AppScreen.Rating)) {
+                if (state.screen !in setOf(AppScreen.Auth, AppScreen.Onboarding, AppScreen.ExitFlow, AppScreen.Rating)) {
                     BottomBar(
                         screen = state.screen,
                         onNavigate = { target ->

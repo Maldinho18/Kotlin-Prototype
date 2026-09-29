@@ -1,10 +1,17 @@
+import java.util.Properties
+import java.io.FileInputStream
+
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) load(FileInputStream(file))
+}
+
+fun localProperty(name: String): String = localProperties.getProperty(name, "")
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
 }
-
-val supabaseUrl = providers.gradleProperty("SUPABASE_URL").orNull ?: ""
-val supabaseAnonKey = providers.gradleProperty("SUPABASE_ANON_KEY").orNull ?: ""
 
 android {
     namespace = "com.sidequests.app"
@@ -15,10 +22,12 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "0.2.0"
 
-        buildConfigField("String", "SUPABASE_URL", ""$supabaseUrl"")
-        buildConfigField("String", "SUPABASE_ANON_KEY", ""$supabaseAnonKey"")
+    buildConfigField("String", "SUPABASE_URL", "\"${localProperty("SUPABASE_URL")}\"")
+    buildConfigField("String", "SUPABASE_ANON_KEY", "\"${localProperty("SUPABASE_ANON_KEY")}\"")
+    buildConfigField("String", "SUPABASE_ACCESS_TOKEN", "\"${localProperty("SUPABASE_ACCESS_TOKEN")}\"")
+    buildConfigField("String", "SUPABASE_USER_ID", "\"${localProperty("SUPABASE_USER_ID")}\"")
     }
 
     buildTypes {
@@ -54,12 +63,13 @@ dependencies {
     androidTestImplementation(composeBom)
 
     implementation("androidx.activity:activity-compose:1.13.0")
+    implementation("androidx.core:core-ktx:1.17.0")
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.core:core-ktx:1.17.0")
-    implementation("com.google.android.gms:play-services-location:21.3.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
