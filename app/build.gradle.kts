@@ -1,23 +1,3 @@
-import java.util.Properties
-import java.io.FileInputStream
-
-val localProperties = Properties().apply {
-    val file = rootProject.file("local.properties")
-    if (file.exists()) load(FileInputStream(file))
-}
-
-fun localProperty(name: String): String = localProperties.getProperty(name, "")
-
-import java.util.Properties
-import java.io.FileInputStream
-
-val localProperties = Properties().apply {
-    val file = rootProject.file("local.properties")
-    if (file.exists()) load(FileInputStream(file))
-}
-
-fun localProperty(name: String): String = localProperties.getProperty(name, "")
-
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
@@ -40,7 +20,7 @@ val supabaseQuestProofsBucket = providers.gradleProperty("SUPABASE_QUEST_PROOFS_
     .get()
 
 fun String.asBuildConfigString(): String =
-    "\"" + replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+    """ + replace("\\", "\\\\").replace(""", "\\"") + """
 
 android {
     namespace = "com.sidequests.app"
@@ -53,10 +33,9 @@ android {
         versionCode = 1
         versionName = "0.2.0"
 
-    buildConfigField("String", "SUPABASE_URL", "\"${localProperty("SUPABASE_URL")}\"")
-    buildConfigField("String", "SUPABASE_ANON_KEY", "\"${localProperty("SUPABASE_ANON_KEY")}\"")
-    buildConfigField("String", "SUPABASE_ACCESS_TOKEN", "\"${localProperty("SUPABASE_ACCESS_TOKEN")}\"")
-    buildConfigField("String", "SUPABASE_USER_ID", "\"${localProperty("SUPABASE_USER_ID")}\"")
+        buildConfigField("String", "SUPABASE_URL", supabaseUrl.asBuildConfigString())
+        buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", supabasePublishableKey.asBuildConfigString())
+        buildConfigField("String", "SUPABASE_QUEST_PROOFS_BUCKET", supabaseQuestProofsBucket.asBuildConfigString())
     }
 
     buildTypes {
@@ -100,8 +79,13 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui-tooling-preview")
 
+    implementation(platform("io.github.jan-tennert.supabase:bom:3.8.0"))
+    implementation("io.github.jan-tennert.supabase:auth-kt")
+    implementation("io.github.jan-tennert.supabase:postgrest-kt")
+    implementation("io.github.jan-tennert.supabase:storage-kt")
+    implementation("io.ktor:ktor-client-android:3.6.0")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
-
     testImplementation("junit:junit:4.13.2")
 }
