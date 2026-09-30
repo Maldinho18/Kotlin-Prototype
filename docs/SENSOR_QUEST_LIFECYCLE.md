@@ -6,8 +6,9 @@ This branch implements the Kotlin-owned Sprint block on top of
 ## Photo-proof flow
 
 1. A photo step launches the device camera with `ActivityResultContracts.TakePicture`.
-2. `CameraPhotoProofService` creates a full-resolution JPEG target inside the app's
-   private files directory and shares only a temporary `FileProvider` URI with the camera.
+2. `CameraPhotoProofService` asks `JpegPhotoProofFileFactory` for a JPEG target inside
+   the app's private files directory and shares only a temporary `FileProvider` URI
+   with the camera.
 3. The active quest keeps evidence per step, so one photo cannot satisfy multiple
    photo-required steps.
 4. The local photo lets the user continue if the network is unavailable.
@@ -21,6 +22,21 @@ This branch implements the Kotlin-owned Sprint block on top of
 
 The default bucket is `quest-proofs`. It can be changed with the Gradle property or
 environment variable `SUPABASE_QUEST_PROOFS_BUCKET`.
+
+### Lex's individual pattern: Factory Method
+
+`PhotoProofFileFactory` is the abstract creator. Its `create(questId, stepIndex)`
+prepares the private directory and validates the step, then invokes the protected
+factory method `createProof`. `JpegPhotoProofFileFactory` is the concrete creator;
+it produces a `JpegPhotoProofFile` through the `PhotoProofFile` product interface.
+`CameraPhotoProofService` consumes that interface and handles only the Android URI.
+
+This is part of the actual capture path in `MissionScreen`, not an unused example.
+Every capture gets a new file, so retaking a photo does not overwrite previous
+evidence. File creation can be tested without Android or opening the camera.
+It is Factory Method rather than Abstract Factory because this flow creates one
+kind of product, an evidence file; it does not need multiple product families.
+This implementation is separate from Julián's `AppViewModelFactory`.
 
 ### Required backend migration
 
@@ -83,6 +99,8 @@ accepting the quest again creates a new attempt ID.
 ## Validation
 
 - `:app:testDebugUnitTest` covers BQ6 distance normalization and evidence generation.
+- `PhotoProofFileFactoryTest` covers unique JPEG targets, path containment, invalid
+  steps, and directory creation failures.
 - `:app:assembleDebug` validates the complete Android build.
 - Runtime validation still requires a camera-capable device or emulator plus a configured
   Supabase project with migration 009 deployed.

@@ -12,43 +12,29 @@ data class PendingPhotoCapture(
 )
 
 /**
- * Owns the Android-specific file and content-URI details for a full-resolution camera capture.
+ * Adapts factory-created evidence files to Android content URIs for a full-resolution capture.
  * The UI only launches the camera and returns the resulting file to the ViewModel.
  */
 class CameraPhotoProofService(
     private val context: Context,
+    private val fileFactory: PhotoProofFileFactory = JpegPhotoProofFileFactory(context.filesDir),
 ) {
     fun createCapture(questId: String, stepIndex: Int): PendingPhotoCapture {
-        val safeQuestId = safePathSegment(questId)
-        val proofDirectory = File(context.filesDir, "quest-proofs/$safeQuestId")
-        check(proofDirectory.mkdirs() || proofDirectory.isDirectory) {
-            "Could not create the local photo-proof directory."
+        val proof = fileFactory.create(questId, stepIndex)
+        try {
+            val uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                proof.file,
+            )
+            return PendingPhotoCapture(uri = uri, file = proof.file, stepIndex = proof.stepIndex)
+        } catch (error: Exception) {
+            discardCapture(proof.file)
+            throw error
         }
-
-        val file = File.createTempFile(
-            "step-${stepIndex + 1}-",
-            ".jpg",
-            proofDirectory,
-        )
-        val uri = FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.fileprovider",
-            file,
-        )
-
-        return PendingPhotoCapture(uri = uri, file = file, stepIndex = stepIndex)
     }
 
     fun discardCapture(file: File) {
         if (file.exists()) file.delete()
-    }
-
-    private companion object {
-        val UNSAFE_PATH_CHARACTER = Regex("[^A-Za-z0-9._-]")
-
-        fun safePathSegment(value: String): String = value
-            .replace(UNSAFE_PATH_CHARACTER, "_")
-            .trim('.', '_')
-            .ifBlank { "quest" }
     }
 }
