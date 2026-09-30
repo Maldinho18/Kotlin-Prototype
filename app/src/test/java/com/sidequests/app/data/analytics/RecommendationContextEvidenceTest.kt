@@ -5,8 +5,9 @@ import com.sidequests.app.context.TimeOfDay
 import com.sidequests.app.context.UserContext
 import com.sidequests.app.context.WeatherCondition
 import com.sidequests.app.context.WeatherData
-import kotlin.test.Test
-import kotlin.test.assertEquals
+import kotlinx.serialization.json.jsonPrimitive
+import org.junit.Test
+import org.junit.Assert.assertEquals
 
 class RecommendationContextEvidenceTest {
 
@@ -22,11 +23,11 @@ class RecommendationContextEvidenceTest {
         )
 
         assertEquals("2", metadata["rank"].toString())
-        assertEquals(""afternoon"", metadata["time_of_day"].toString())
+        assertEquals("afternoon", metadata.getValue("time_of_day").jsonPrimitive.content)
         assertEquals("true", metadata["location_available"].toString())
         assertEquals("true", metadata["weather_available"].toString())
         assertEquals("false", metadata["context_fallback"].toString())
-        assertEquals(""open_meteo"", metadata["weather_provider"].toString())
+        assertEquals("open_meteo", metadata.getValue("weather_provider").jsonPrimitive.content)
     }
 
     @Test
@@ -43,6 +44,6 @@ class RecommendationContextEvidenceTest {
         assertEquals("false", metadata["location_available"].toString())
         assertEquals("false", metadata["weather_available"].toString())
         assertEquals("true", metadata["context_fallback"].toString())
-        assertEquals(""night"", metadata["time_of_day"].toString())
+        assertEquals("night", metadata.getValue("time_of_day").jsonPrimitive.content)
     }
 }

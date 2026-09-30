@@ -2,10 +2,10 @@ package com.sidequests.app.domain
 
 import com.sidequests.app.model.QuestProgress
 import com.sidequests.app.model.QuestStep
-import kotlin.test.Test
-import kotlin.test.assertFalse
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
+import org.junit.Test
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 
 class QuestStepCompletionPolicyTest {
 
