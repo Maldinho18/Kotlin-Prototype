@@ -2,16 +2,26 @@ package com.sidequests.app.data.photo
 
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.storage.storage
 import io.ktor.http.ContentType
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 
 data class PhotoProofUpload(
     val storagePath: String,
     val byteCount: Long,
+)
+
+@Serializable
+private data class PhotoProofInsertDto(
+    @SerialName("attempt_id") val attemptId: String,
+    @SerialName("step_order") val stepOrder: Int,
+    @SerialName("storage_path") val storagePath: String,
 )
 
 interface PhotoProofRepository {
@@ -37,6 +47,7 @@ class SupabasePhotoProofRepository(
             check(photoFile.isFile && photoFile.length() > 0) {
                 "The captured photo is empty or unavailable."
             }
+            require(stepIndex >= 0) { "A photo proof needs a valid quest step." }
 
             val userId = client.auth.currentUserOrNull()?.id
                 ?: error("No authenticated Supabase user is available.")
@@ -48,9 +59,27 @@ class SupabasePhotoProofRepository(
                 "step-${stepIndex + 1}-${UUID.randomUUID()}.jpg",
             ).joinToString("/")
 
-            client.storage.from(bucketName).upload(storagePath, photoFile.readBytes()) {
+            val bucket = client.storage.from(bucketName)
+            bucket.upload(storagePath, photoFile.readBytes()) {
                 upsert = false
                 contentType = ContentType.Image.JPEG
+            }
+
+            try {
+                client.from("quest_photo_proofs").insert(
+                    PhotoProofInsertDto(
+                        attemptId = attemptId,
+                        stepOrder = stepIndex,
+                        storagePath = storagePath,
+                    )
+                )
+            } catch (registrationError: Exception) {
+                try {
+                    bucket.delete(storagePath)
+                } catch (cleanupError: Exception) {
+                    registrationError.addSuppressed(cleanupError)
+                }
+                throw registrationError
             }
 
             PhotoProofUpload(

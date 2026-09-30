@@ -47,4 +47,15 @@ The app's reactive UI is implemented through `StateFlow` exposed by `AppViewMode
 
 ### Factory / Abstract Factory — Lex Betancourt
 
-Factory/Abstract Factory is the assigned Sprint 2 pattern for Lex. The final implementation and rationale should be completed in the photo-proof/sensor integration before the final official-repository merge.
+Lex implements **Factory Method** in the camera flow. `PhotoProofFileFactory` is
+the abstract creator: `create` validates the quest step, prepares a safe private
+directory, then calls its protected factory method `createProof`.
+`JpegPhotoProofFileFactory` is the concrete creator and `JpegPhotoProofFile` is the
+concrete product behind the `PhotoProofFile` interface.
+
+`CameraPhotoProofService` uses this factory for every actual camera capture and
+converts the created file into a `FileProvider` URI. The factory owns allocation
+and unique naming; the Android service owns URI sharing. This avoids overwriting
+previous evidence and lets file creation be tested without Android. It is distinct
+from Julián's `AppViewModelFactory`. See [sensor integration](SENSOR_QUEST_LIFECYCLE.md)
+for the implementation roles and validation.

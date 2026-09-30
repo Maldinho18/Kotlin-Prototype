@@ -45,6 +45,8 @@ private data class AnalyticsEventInsertDto(
     val questDifficulty: String? = null,
     @SerialName("estimated_cost")
     val estimatedCost: Int? = null,
+    @SerialName("distance_meters")
+    val distanceMeters: Int? = null,
     val metadata: JsonObject = JsonObject(emptyMap()),
 )
 
@@ -77,6 +79,7 @@ class SupabaseAnalyticsRepository(
                     questDurationMinutes = quest?.durationMinutes,
                     questDifficulty = quest?.difficulty?.name?.lowercase(),
                     estimatedCost = quest?.budgetAmount,
+                    distanceMeters = quest?.estimatedDistanceMeters(),
                     metadata = metadata,
                 )
             )
