@@ -67,6 +67,7 @@ data class QuestRating(
 )
 
 enum class AppScreen {
+    Auth,
     Onboarding,
     Explorer,
     QuestDetail,
@@ -79,13 +80,6 @@ enum class AppScreen {
 
 data class SidequestsUiState(
     val screen: AppScreen = AppScreen.Onboarding,
-    val catalogLoading: Boolean = false,
-    val catalogSource: String = "Local fallback",
-    val catalogError: String? = null,
-    val remoteRecommendationIds: List<String> = emptyList(),
-    val recommendationLoading: Boolean = false,
-    val recommendationSource: String = "Local fallback",
-    val recommendationError: String? = null,
     val onboardingStep: Int = 0,
     val darkMode: Boolean = false,
     val selectedQuestId: String = "botanical-garden",
@@ -100,6 +94,13 @@ data class SidequestsUiState(
     val progressSyncing: Boolean = false,
     val progressSyncError: String? = null,
     val progressSyncMessage: String? = null,
+    val catalogLoading: Boolean = false,
+    val catalogError: String? = null,
+    val catalogSource: String = "Local catalogue",
+    val recommendationLoading: Boolean = false,
+    val recommendationError: String? = null,
+    val recommendationSource: String = "Local fallback",
+    val remoteRecommendationIds: List<String> = emptyList(),
     val notificationQuestId: String? = null,
     val contextualNotificationShown: Boolean = false,
 )

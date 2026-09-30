@@ -1,8 +1,12 @@
 package com.sidequests.app.ui
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.sidequests.app.BuildConfig
+import com.sidequests.app.context.ContextAwareRecommendationEngine
+import com.sidequests.app.context.ContextManager
+import com.sidequests.app.context.ContextUiState
 import com.sidequests.app.data.InMemorySidequestsRepository
 import com.sidequests.app.data.SidequestsRepository
 import com.sidequests.app.data.SupabaseSidequestsRepository
@@ -10,6 +14,7 @@ import com.sidequests.app.data.remote.SupabaseProvider
 import com.sidequests.app.data.progress.QuestProgressRepository
 import com.sidequests.app.data.progress.SupabaseQuestProgressRepository
 import com.sidequests.app.data.analytics.AnalyticsRepository
+import com.sidequests.app.data.analytics.buildRecommendationContextMetadata
 import com.sidequests.app.data.analytics.buildBq6AbandonmentEvidence
 import com.sidequests.app.data.analytics.SupabaseAnalyticsRepository
 import com.sidequests.app.data.photo.PhotoProofRepository
@@ -25,56 +30,72 @@ import com.sidequests.app.model.QuestRating
 import com.sidequests.app.model.SidequestsUiState
 import com.sidequests.app.model.SocialLevel
 import com.sidequests.app.model.UserPreferences
+import com.sidequests.app.domain.QuestStepCompletionPolicy
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.util.UUID
-import java.io.File
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-
+import java.io.File
+import java.util.UUID
 class AppViewModel(
+    private val contextManager: ContextManager,
     private val repository: SidequestsRepository =
-        if (SupabaseProvider.isConfigured) {
-            SupabaseSidequestsRepository(SupabaseProvider.client)
-        } else {
-            InMemorySidequestsRepository()
-        },
+        if (SupabaseProvider.isConfigured) SupabaseSidequestsRepository(SupabaseProvider.client)
+        else InMemorySidequestsRepository(),
     private val progressRepository: QuestProgressRepository? =
-        if (SupabaseProvider.isConfigured) {
-            SupabaseQuestProgressRepository(SupabaseProvider.client)
-        } else {
-            null
-        },
+        if (SupabaseProvider.isConfigured) SupabaseQuestProgressRepository(SupabaseProvider.client)
+        else null,
     private val analyticsRepository: AnalyticsRepository? =
-        if (SupabaseProvider.isConfigured) {
-            SupabaseAnalyticsRepository(SupabaseProvider.client)
-        } else {
-            null
-        },
+        if (SupabaseProvider.isConfigured) SupabaseAnalyticsRepository(SupabaseProvider.client)
+        else null,
     private val recommendationRepository: RecommendationRepository? =
-        if (SupabaseProvider.isConfigured) {
-            SupabaseRecommendationRepository(SupabaseProvider.client)
-        } else {
-            null
-        },
+        if (SupabaseProvider.isConfigured) SupabaseRecommendationRepository(SupabaseProvider.client)
+        else null,
     private val photoProofRepository: PhotoProofRepository? =
         if (SupabaseProvider.isConfigured) {
             SupabasePhotoProofRepository(
                 client = SupabaseProvider.client,
                 bucketName = BuildConfig.SUPABASE_QUEST_PROOFS_BUCKET,
             )
-        } else {
-            null
-        },
+        } else null,
 ) : ViewModel() {
 
     private val analyticsSessionId = UUID.randomUUID().toString()
-
+    private val recommendationEngine = ContextAwareRecommendationEngine()
     private val _uiState = MutableStateFlow(SidequestsUiState())
+    private val _contextState = MutableStateFlow(ContextUiState())
     val uiState: StateFlow<SidequestsUiState> = _uiState.asStateFlow()
+    val contextState: StateFlow<ContextUiState> = _contextState.asStateFlow()
+
+    init {
+        refreshContext()
+        refreshQuestCatalog()
+    }
+
+    fun refreshContext() {
+        viewModelScope.launch {
+            _contextState.update { it.copy(loading = true, error = null) }
+            runCatching { contextManager.readContext() }
+                .onSuccess { context ->
+                    _contextState.value = ContextUiState(
+                        loading = false,
+                        context = context,
+                        error = null,
+                    )
+                }
+                .onFailure { error ->
+                    _contextState.update {
+                        it.copy(
+                            loading = false,
+                            error = error.message ?: "Context unavailable",
+                        )
+                    }
+                }
+        }
+    }
 
     val categories: List<String> get() = repository.categories()
 
@@ -95,21 +116,28 @@ class AppViewModel(
     fun recommendations(): List<Quest> {
         val state = _uiState.value
 
-        if (state.remoteRecommendationIds.isNotEmpty()) {
-            return state.remoteRecommendationIds.mapNotNull { id ->
+        val base = if (state.remoteRecommendationIds.isNotEmpty()) {
+            state.remoteRecommendationIds.mapNotNull { id ->
                 repository.allQuests().firstOrNull { it.id == id }
             }
+        } else {
+            val completedIds = state.progressByQuest
+                .filterValues { it.completedSteps.size >= 4 }
+                .keys
+            val inProgressIds = state.progressByQuest
+                .filterValues { it.completedSteps.size in 1..3 && !it.abandoned }
+                .keys
+
+            repository.recommendations(
+                availableMinutes = state.availableTime,
+                preferences = state.preferences,
+                skippedIds = state.skippedQuestIds,
+                completedIds = completedIds,
+                inProgressIds = inProgressIds,
+            )
         }
 
-        val completedIds = state.progressByQuest.filterValues { it.completedSteps.size >= 4 }.keys
-        val inProgressIds = state.progressByQuest.filterValues { it.completedSteps.size in 1..3 && !it.abandoned }.keys
-        return repository.recommendations(
-            availableMinutes = state.availableTime,
-            preferences = state.preferences,
-            skippedIds = state.skippedQuestIds,
-            completedIds = completedIds,
-            inProgressIds = inProgressIds,
-        )
+        return recommendationEngine.apply(base, _contextState.value.context)
     }
 
 
@@ -174,15 +202,16 @@ class AppViewModel(
                         )
                     }
 
+                    val contextSnapshot = _contextState.value.context
                     ids.forEachIndexed { index, id ->
                         repository.allQuests().firstOrNull { it.id == id }?.let { quest ->
                             trackEvent(
                                 eventType = "recommendation_shown",
                                 quest = quest,
-                                metadata = buildJsonObject {
-                                    put("rank", index + 1)
-                                    put("source", "bq5_rpc")
-                                },
+                                metadata = buildRecommendationContextMetadata(
+                                    context = contextSnapshot,
+                                    rank = index + 1,
+                                ),
                             )
                         }
                     }
@@ -326,23 +355,66 @@ class AppViewModel(
     }
 
     fun setLocationMode(mode: String) {
+        val normalized = mode.lowercase()
         _uiState.update {
             it.copy(
-                preferences = it.preferences.copy(locationMode = mode),
+                preferences = it.preferences.copy(locationMode = normalized),
                 remoteRecommendationIds = emptyList(),
             )
         }
-        trackEvent(
-            eventType = "location_mode_selected",
-            metadata = buildJsonObject { put("mode", mode) },
-        )
+
+        val eventType = when (normalized) {
+            "anywhere" -> "location_independent_mode_selected"
+            "gps" -> "location_based_mode_selected"
+            else -> "location_mode_all_selected"
+        }
+
+        viewModelScope.launch {
+            val context = runCatching { contextManager.readContext() }
+                .getOrElse { _contextState.value.context }
+
+            _contextState.update {
+                it.copy(context = context, loading = false)
+            }
+
+            trackEvent(
+                eventType = eventType,
+                metadata = buildJsonObject {
+                    put("location_mode", normalized)
+                    put("time_of_day", context.timeOfDay.name.lowercase())
+                    put(
+                        "weather_condition",
+                        context.weather?.condition?.name?.lowercase() ?: "unknown",
+                    )
+                },
+            )
+
+            refreshRecommendations()
+        }
     }
+
 
     fun completeCurrentStep() {
         val state = _uiState.value
         val questId = state.activeQuestId
         val quest = repository.questById(questId)
         val current = state.progressByQuest[questId] ?: QuestProgress()
+        val currentStep = quest.steps.getOrNull(current.currentStep) ?: return
+        val completionDecision = QuestStepCompletionPolicy.evaluate(
+            stepIndex = current.currentStep,
+            step = currentStep,
+            progress = current,
+        )
+        if (!completionDecision.allowed) {
+            _uiState.update {
+                it.copy(
+                    progressSyncError = completionDecision.reason,
+                    progressSyncMessage = null,
+                )
+            }
+            return
+        }
+
         val nextCompleted = current.completedSteps + current.currentStep
         val completed = nextCompleted.size >= quest.steps.size
         val nextStep = if (current.currentStep < quest.steps.lastIndex) {

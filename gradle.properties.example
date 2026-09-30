@@ -1,0 +1,6 @@
+# Copy these values to your user-level ~/.gradle/gradle.properties.
+# Never commit real project credentials.
+
+SUPABASE_URL=YOUR_SUPABASE_URL
+SUPABASE_PUBLISHABLE_KEY=YOUR_SUPABASE_PUBLISHABLE_KEY
+SUPABASE_QUEST_PROOFS_BUCKET=quest-proofs

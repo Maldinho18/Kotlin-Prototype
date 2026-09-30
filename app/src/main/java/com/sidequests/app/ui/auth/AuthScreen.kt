@@ -189,7 +189,7 @@ fun MissingSupabaseConfigurationScreen(
         )
         Spacer(Modifier.height(12.dp))
         Text(
-            text = "Provide SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY through local.properties or environment variables, then rebuild the app.",
+            text = "Provide SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY through Gradle properties or environment variables, then rebuild the app.",
             style = MaterialTheme.typography.bodyMedium,
         )
     }
