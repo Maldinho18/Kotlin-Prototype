@@ -19,8 +19,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LinearProgressIndicator
@@ -32,25 +34,30 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sidequests.app.model.AppScreen
+import com.sidequests.app.model.AbandonmentReason
 import com.sidequests.app.model.LocationMode
 import com.sidequests.app.model.Quest
 import com.sidequests.app.model.QuestDifficulty
 import com.sidequests.app.model.QuestProgress
 import com.sidequests.app.model.SidequestsUiState
 import com.sidequests.app.model.SocialLevel
+import com.sidequests.app.sensor.camera.CameraPhotoProofService
 import com.sidequests.app.ui.theme.DiscoveryTeal
 import com.sidequests.app.ui.theme.ExplorerIndigo
 import com.sidequests.app.ui.theme.QuestAmber
+import java.io.File
 
 @Composable
 fun QuestDetailScreen(
@@ -159,8 +166,29 @@ fun ActiveQuestScreen(
     viewModel: AppViewModel,
     modifier: Modifier = Modifier,
 ) {
-    val photoLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
-        if (bitmap != null) viewModel.markPhotoProof()
+    val context = LocalContext.current
+    val cameraService = remember(context) {
+        CameraPhotoProofService(context.applicationContext)
+    }
+    var pendingPhotoPath by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingPhotoStep by rememberSaveable { mutableIntStateOf(-1) }
+    val photoLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { captured ->
+        val file = pendingPhotoPath?.let(::File)
+        val stepIndex = pendingPhotoStep
+        pendingPhotoPath = null
+        pendingPhotoStep = -1
+
+        if (captured && file != null && file.length() > 0 && stepIndex >= 0) {
+            viewModel.markPhotoProofCaptured(stepIndex, file.absolutePath)
+        } else {
+            if (file != null) cameraService.discardCapture(file)
+            if (captured && stepIndex >= 0) {
+                viewModel.reportPhotoProofError(
+                    stepIndex,
+                    "The camera did not produce a usable photo. Please try again.",
+                )
+            }
+        }
     }
     val allDone = progress.completedSteps.size >= quest.steps.size
 
@@ -241,18 +269,56 @@ fun ActiveQuestScreen(
                         }
                     }
                     if (active && step.requiresPhoto) {
+                        val hasPhotoProof = progress.hasPhotoProof(index)
+                        val isUploading = index in progress.photoProofUploadingSteps
+                        val isUploaded = index in progress.uploadedPhotoProofByStep
                         Spacer(Modifier.height(12.dp))
                         Surface(
-                            modifier = Modifier.fillMaxWidth().clickable { photoLauncher.launch(null) },
+                            modifier = Modifier.fillMaxWidth().clickable(enabled = !isUploading) {
+                                runCatching { cameraService.createCapture(quest.id, index) }
+                                    .onSuccess { capture ->
+                                        pendingPhotoPath = capture.file.absolutePath
+                                        pendingPhotoStep = capture.stepIndex
+                                        photoLauncher.launch(capture.uri)
+                                    }
+                                    .onFailure {
+                                        viewModel.reportPhotoProofError(
+                                            index,
+                                            "Photo proof could not be prepared. Please try again."
+                                        )
+                                    }
+                            },
                             shape = RoundedCornerShape(16.dp),
-                            color = if (progress.hasPhotoProof) DiscoveryTeal.copy(alpha = .16f) else MaterialTheme.colorScheme.surfaceVariant,
+                            color = if (hasPhotoProof) DiscoveryTeal.copy(alpha = .16f) else MaterialTheme.colorScheme.surfaceVariant,
                         ) {
                             Text(
-                                if (progress.hasPhotoProof) "✓ Photo proof captured" else "📷 Capture photo proof",
+                                when {
+                                    isUploading -> "↥ Uploading photo proof…"
+                                    isUploaded -> "✓ Photo proof captured and uploaded"
+                                    hasPhotoProof -> "✓ Photo proof captured locally"
+                                    else -> "📷 Capture photo proof"
+                                },
                                 modifier = Modifier.padding(14.dp),
                                 textAlign = TextAlign.Center,
-                                color = if (progress.hasPhotoProof) DiscoveryTeal else MaterialTheme.colorScheme.onSurface,
+                                color = if (hasPhotoProof) DiscoveryTeal else MaterialTheme.colorScheme.onSurface,
                                 fontWeight = FontWeight.Bold,
+                            )
+                        }
+                        progress.photoProofErrorByStep[index]?.let { error ->
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                error,
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            Text(
+                                "Retry upload",
+                                modifier = Modifier
+                                    .padding(top = 4.dp)
+                                    .clickable { viewModel.retryPhotoProofUpload(index) },
+                                color = ExplorerIndigo,
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.bodySmall,
                             )
                         }
                     }
@@ -261,7 +327,7 @@ fun ActiveQuestScreen(
                         PrimaryButton(
                             text = if (index == quest.steps.lastIndex) "Complete final step ✓" else "Mark step complete ✓",
                             onClick = viewModel::completeCurrentStep,
-                            enabled = !step.requiresPhoto || progress.hasPhotoProof,
+                            enabled = !step.requiresPhoto || progress.hasPhotoProof(index),
                             containerColor = DiscoveryTeal,
                         )
                     }
@@ -294,17 +360,14 @@ fun ExitFlowScreen(
     viewModel: AppViewModel,
     modifier: Modifier = Modifier,
 ) {
-    val reasons = listOf(
-        "⏰" to "Ran out of time",
-        "🔒" to "Place is closed",
-        "😅" to "Too difficult for today",
-        "🌧" to "Weather / mood changed",
-        "💬" to "Something else",
-    )
-    var selectedReason by remember { mutableStateOf<String?>(null) }
+    var selectedReason by remember { mutableStateOf<AbandonmentReason?>(null) }
 
     Column(
-        modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(24.dp),
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
     ) {
         Spacer(Modifier.height(16.dp))
         Text("PAUSING ${quest.title.uppercase()}", color = ExplorerIndigo, fontSize = 10.sp, fontWeight = FontWeight.Black)
@@ -317,28 +380,43 @@ fun ExitFlowScreen(
             color = DiscoveryTeal,
         )
         Spacer(Modifier.height(22.dp))
-        Text("Optional: what got in the way?", fontWeight = FontWeight.Bold)
+        Text("If you're ending it, what got in the way?", fontWeight = FontWeight.Bold)
+        Text(
+            "Choose one reason to start another quest. Saving progress does not abandon this one.",
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = .60f),
+            style = MaterialTheme.typography.bodySmall,
+        )
         Spacer(Modifier.height(8.dp))
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            reasons.forEach { (emoji, reason) ->
+            AbandonmentReason.entries.forEach { reason ->
                 ChoiceChip(
-                    text = reason,
-                    emoji = emoji,
+                    text = reason.label,
+                    emoji = reason.emoji,
                     selected = selectedReason == reason,
                     onClick = { selectedReason = if (selectedReason == reason) null else reason },
                 )
             }
         }
-        Spacer(Modifier.weight(1f))
-        PrimaryButton("Save progress & exit", { viewModel.saveAndExit(selectedReason) })
+        Spacer(Modifier.height(24.dp))
+        PrimaryButton("Save progress & exit", viewModel::saveAndExit)
         Spacer(Modifier.height(8.dp))
         PrimaryButton("Keep going", { viewModel.navigate(AppScreen.ActiveQuest) }, containerColor = DiscoveryTeal)
         Spacer(Modifier.height(8.dp))
         Text(
             "Start another quest instead",
-            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable(onClick = viewModel::startAnotherQuest).padding(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .clickable(enabled = selectedReason != null) {
+                    selectedReason?.let(viewModel::startAnotherQuest)
+                }
+                .padding(12.dp),
             textAlign = TextAlign.Center,
-            color = ExplorerIndigo,
+            color = if (selectedReason == null) {
+                MaterialTheme.colorScheme.onSurface.copy(alpha = .35f)
+            } else {
+                ExplorerIndigo
+            },
             fontWeight = FontWeight.Bold,
         )
     }
@@ -474,6 +552,7 @@ fun GroupQuestScreen(
 fun ProfileScreen(
     state: SidequestsUiState,
     viewModel: AppViewModel,
+    onSignOut: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val completed = state.progressByQuest.values.count { it.completedSteps.size >= 4 }
@@ -554,6 +633,13 @@ fun ProfileScreen(
             }
         }
         item {
+            Text("ACCOUNT", fontSize = 10.sp, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .5f))
+            Text(
+                "Authenticated user",
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = .65f),
+            )
+        }
+        item {
             Text("BADGES", fontSize = 10.sp, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .5f))
         }
         item {
@@ -575,6 +661,13 @@ fun ProfileScreen(
                     }
                 }
             }
+        }
+        item {
+            PrimaryButton(
+                text = "Sign out",
+                onClick = onSignOut,
+                containerColor = MaterialTheme.colorScheme.error,
+            )
         }
     }
 }

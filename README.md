@@ -1,6 +1,6 @@
-# Sidequests — Kotlin Native Prototype (team draft)
+# Sidequests — Kotlin Native App (Sprint 2 integration)
 
-This repository contains a **native Android draft** of the Sidequests experience represented in the current Figma Make / React prototype. It is intentionally isolated from the final course repository so the Kotlin subgroup can review, test, change, and divide the work before deciding what should be carried over.
+This repository contains the validated Kotlin/Jetpack Compose implementation used by the Sidequests Kotlin subgroup during Sprint 2. It remains temporarily isolated from the official course repository so the subgroup can finish end-to-end validation before transferring the Git history to the organization repository.
 
 ## Current validation status
 
@@ -29,8 +29,11 @@ See [`docs/VALIDATION.md`](docs/VALIDATION.md) for the validation checklist.
 - Simulated contextual recommendation banner.
 - Quest detail view.
 - Active quest view with four-step progress.
-- Native camera preview launcher for photo-proof steps.
+- Full-resolution native camera capture with one photo proof per required step.
+- Private Supabase Storage upload for photo proofs, including local state and retry.
 - Save-and-exit flow.
+- Structured abandonment reasons and BQ6 analytics evidence for duration, cost, distance,
+  progress, and photo-proof state.
 - Rating/feedback flow.
 - Group quest view.
 - Editable profile/preferences view.
@@ -59,26 +62,34 @@ See [`docs/MS7_VIEW_MAP.md`](docs/MS7_VIEW_MAP.md) for the detailed mapping and 
 
 The draft intentionally uses a small architecture that can grow into Sprint 2:
 
-`Compose UI -> AppViewModel -> SidequestsRepository -> in-memory seed data`
+`Compose UI -> AppViewModel -> repositories -> Supabase / local fallback`
 
 The UI observes `StateFlow<SidequestsUiState>`. Actions update state through the ViewModel and Compose reacts to the new state. This is the concrete Observer-style flow used in the draft.
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-## Important scope boundary
+## Current Sprint 2 scope
 
-This is a **native prototype / Sprint 2 foundation**, not a claim that all Sprint 2 integrations are finished. The following are still simulated or local:
+The integration branch includes:
 
-- contextual trigger: simulated after entering Explorer;
-- recommendation engine: local scoring, not analytics/backend-driven;
-- user identity: local demo profile, no real authentication provider;
-- data: in-memory seed data, no persistence/backend;
-- location: UI filter only, no real GPS query;
-- external service: not connected;
-- analytics pipeline and Business Questions: not connected;
-- dedicated sensor feature: not connected yet.
+- Supabase Auth for sign-up, sign-in and sign-out.
+- Remote quest catalogue and quest-step loading from the shared Supabase backend.
+- Persistent quest lifecycle/progress.
+- BQ5 Smart Picks using the shared `recommend_quests` backend RPC.
+- Real Android location permission flow and GPS context.
+- Context-aware re-ranking using location, time of day and Open-Meteo weather.
+- Location-independent (Anywhere) mode and location-mode analytics events for BQ10.
+- Camera-backed photo proof for required quest steps.
+- Local photo-proof gating: a required photo step cannot be completed before a usable photo is captured.
+- Supabase Storage upload/retry integration for photo proofs.
+- Structured abandonment events used by BQ6.
+- Observable `StateFlow` UI state consumed by Compose.
 
-These follow-up items are listed in [`docs/SPRINT2_NEXT.md`](docs/SPRINT2_NEXT.md).
+Known limitation at this checkpoint:
+
+- photo capture works locally, but remote upload remains pending until the shared Supabase backend provisions the private `quest-proofs` bucket and policies. The app deliberately allows the quest to continue with local proof and exposes a retry action, preserving eventual-connectivity behavior.
+
+The analytics ETL/dashboard lives in the separate `Sidequests-Analytics` repository.
 
 ## Toolchain
 
@@ -93,15 +104,102 @@ The validated CI build currently uses:
 - Java 17
 - Gradle 9.3.1 in CI
 
-## Open in Android Studio
+## Local setup and validation
 
-1. Clone or download the `draft/native-prototype` branch.
-2. Open the repository root in a recent Android Studio version.
-3. Let Gradle sync.
-4. Run the `app` configuration on an Android emulator or device with API 26+.
-5. Walk through onboarding and the remaining screens using the controls in the app.
+### 1. Requirements
 
-The repository intentionally does not commit a Gradle wrapper JAR; CI provisions Gradle 9.3.1 explicitly. Android Studio can use the configured Gradle environment when opening the project.
+- Recent Android Studio version.
+- Android SDK 36 installed.
+- Java/JBR available through Android Studio.
+- Android emulator or physical device with API 26+.
+- Access to the shared Sidequests Supabase project configuration.
+
+### 2. Clone and open
+
+Open the repository root in Android Studio and let Gradle sync.
+
+For the validated Sprint 2 state, use:
+
+```bash
+git fetch origin
+git checkout integration/sprint2-kotlin
+git pull origin integration/sprint2-kotlin
+```
+
+### 3. Local Gradle properties
+
+Do **not** commit project credentials. Copy the values from the shared project into the user-level Gradle properties file:
+
+Windows:
+
+```text
+C:\\Users\\<YOUR_USER>\\.gradle\\gradle.properties
+```
+
+Required values:
+
+```properties
+SUPABASE_URL=...
+SUPABASE_PUBLISHABLE_KEY=...
+SUPABASE_QUEST_PROOFS_BUCKET=quest-proofs
+```
+
+The Android SDK path remains in the local Android `local.properties` file and is ignored by Git.
+
+A secret-free template is available in `gradle.properties.example`.
+
+### 4. Build
+
+```powershell
+.\\gradlew.bat clean
+.\\gradlew.bat :app:assembleDebug
+```
+
+Expected result:
+
+```text
+BUILD SUCCESSFUL
+```
+
+### 5. Run
+
+In Android Studio:
+
+1. Select the `app` run configuration.
+2. Start an Android emulator (the subgroup validated with the Android Studio Medium Phone emulator).
+3. Run the app.
+4. Sign in with a confirmed Supabase user or create a new account and confirm the email.
+
+### 6. Smoke-test checklist
+
+Validate at least:
+
+- Auth sign-in/sign-out.
+- Remote Supabase quest catalogue.
+- BQ5 Smart Picks under different time/interests.
+- `Not for me` removes and replaces recommendations when possible.
+- Nearby requests location permission and uses GPS context.
+- Anywhere continues without requiring GPS.
+- Live Context displays Open-Meteo weather when available and falls back without crashing.
+- Quest tab becomes available after accepting a quest.
+- Required photo steps block completion before capture.
+- Camera capture creates local photo proof.
+- Storage retry reaches the uploaded state once the backend `quest-proofs` bucket/policies are provisioned.
+- Accept/start/progress/abandon/complete quest lifecycle.
+
+## Design-pattern evidence
+
+### Sebastián Maldonado — Observer-style reactive flow
+
+`AppViewModel` exposes observable `StateFlow` state (`uiState` and `contextState`). Compose subscribes using `collectAsStateWithLifecycle()`. When the ViewModel changes state, observers receive the update and Compose recomposes the affected UI. This is the concrete Observer-style contribution used for Sebastián's Sprint 2 architecture rationale.
+
+### Julián Ramírez — Facade
+
+`ContextManager` provides one context-facing API over location, weather and time providers, hiding their individual acquisition details from the rest of the app.
+
+### Lex Betancourt — Factory/Abstract Factory
+
+The assigned Factory/Abstract Factory pattern remains to be finalized and documented by its owner in the sensor/photo-proof integration before the final course-repository submission.
 
 ## Suggested team review
 

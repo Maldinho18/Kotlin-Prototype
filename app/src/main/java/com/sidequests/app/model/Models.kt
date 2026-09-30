@@ -42,10 +42,15 @@ data class Quest(
 data class QuestProgress(
     val currentStep: Int = 0,
     val completedSteps: Set<Int> = emptySet(),
-    val hasPhotoProof: Boolean = false,
+    val localPhotoProofByStep: Map<Int, String> = emptyMap(),
+    val uploadedPhotoProofByStep: Map<Int, String> = emptyMap(),
+    val photoProofUploadingSteps: Set<Int> = emptySet(),
+    val photoProofErrorByStep: Map<Int, String> = emptyMap(),
     val abandoned: Boolean = false,
-    val abandonReason: String? = null,
-)
+    val abandonReason: AbandonmentReason? = null,
+) {
+    fun hasPhotoProof(stepIndex: Int): Boolean = stepIndex in localPhotoProofByStep
+}
 
 data class UserPreferences(
     val interests: Set<String> = emptySet(),
@@ -62,6 +67,7 @@ data class QuestRating(
 )
 
 enum class AppScreen {
+    Auth,
     Onboarding,
     Explorer,
     QuestDetail,
@@ -84,6 +90,17 @@ data class SidequestsUiState(
     val progressByQuest: Map<String, QuestProgress> = emptyMap(),
     val skippedQuestIds: Set<String> = emptySet(),
     val ratingsByQuest: Map<String, QuestRating> = emptyMap(),
+    val attemptIdByQuest: Map<String, String> = emptyMap(),
+    val progressSyncing: Boolean = false,
+    val progressSyncError: String? = null,
+    val progressSyncMessage: String? = null,
+    val catalogLoading: Boolean = false,
+    val catalogError: String? = null,
+    val catalogSource: String = "Local catalogue",
+    val recommendationLoading: Boolean = false,
+    val recommendationError: String? = null,
+    val recommendationSource: String = "Local fallback",
+    val remoteRecommendationIds: List<String> = emptyList(),
     val notificationQuestId: String? = null,
     val contextualNotificationShown: Boolean = false,
 )

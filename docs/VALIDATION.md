@@ -77,19 +77,21 @@ The following claims are supported:
 
 - The project compiles into a debug APK.
 - Native Compose views and navigation/state logic are implemented.
-- Camera preview is wired through an Android Activity Result contract.
-- Recommendations are computed locally from prototype preferences.
+- Full-resolution camera capture is wired through an Android Activity Result contract and
+  a private `FileProvider` URI.
+- Photo evidence is tracked per quest step and the Supabase Storage upload path compiles.
+- Supabase Auth, remote catalogue, lifecycle persistence, analytics writes, and the BQ5
+  recommendation RPC are integrated with local fallbacks where applicable.
+- Abandonment requires a stable reason and emits BQ6 duration, cost, distance, progress,
+  and photo-proof evidence through analytics metadata.
 - Contextual notification UX is represented by a simulated timed trigger.
 
 The following claims are NOT yet supported and must not be presented as complete:
 
-- real user authentication;
 - real GPS/context sensing;
-- a dedicated sensor-backed feature;
-- backend persistence;
+- runtime photo upload against a configured `quest-proofs` bucket and RLS policy;
 - external service integration;
-- analytics pipeline;
-- implemented Business Questions against analytics data.
+- execution of the analytics ETL/dashboard, which lives in a separate repository.
 
 See `SPRINT2_NEXT.md` for the transition from prototype to Sprint 2 implementation.
 
@@ -103,8 +105,11 @@ The subgroup should run the generated APK or Android Studio project and verify:
 - time/location/category filters respond;
 - a quest can be opened;
 - an active quest advances through steps;
-- camera preview opens on the target device/emulator where camera support is available;
+- the full-resolution camera opens on the target device/emulator and evidence is required
+  independently for each photo step;
+- upload state changes from local to uploaded, or exposes a retry when offline;
 - save/exit navigation returns correctly;
+- abandoning is disabled until a reason is selected and a new acceptance gets a new attempt;
 - rating flow completes;
 - group quest view opens;
 - profile values can be edited;
