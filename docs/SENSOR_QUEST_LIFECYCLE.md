@@ -31,7 +31,7 @@ factory method `createProof`. `JpegPhotoProofFileFactory` is the concrete creato
 it produces a `JpegPhotoProofFile` through the `PhotoProofFile` product interface.
 `CameraPhotoProofService` consumes that interface and handles only the Android URI.
 
-This is part of the actual capture path in `MissionScreen`, not an unused example.
+This is part of the actual capture path in `ActiveQuestScreen`.
 Every capture gets a new file, so retaking a photo does not overwrite previous
 evidence. File creation can be tested without Android or opening the camera.
 It is Factory Method rather than Abstract Factory because this flow creates one
